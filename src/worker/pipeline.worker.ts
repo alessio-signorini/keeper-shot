@@ -4,11 +4,13 @@ import * as C from '../config';
 import { applyAll, boxOf, iou } from '../core/geometry';
 import { alignByFaces, scoreAlignment } from '../core/faceAlign';
 import { groupFaces } from '../core/group';
+import { dropSmallOutliers } from '../core/faceFilters';
+import { searchRegion } from '../core/tiles';
 import { estimateJpegQuality } from '../core/jpegQuality';
 import { eyesScore, funnyPenalty, normalizeSharpness, scoreFace } from '../core/score';
 import { chooseBase, isSwap } from '../core/select';
 import { fthumbKey, frameKey, getBlob, putBlob, saveSession, thumbKey, clearAll } from '../db';
-import type { Face, Frame, Pick, PipelineEvent, Session } from '../types';
+import type { Box, Face, Frame, Pick, PipelineEvent, Session } from '../types';
 import { Aligner, maskBoxes, toGray, type AlignFeatures } from './align';
 import { Compositor, renderComposite } from './composite';
 import { installImportScripts, loadCV } from './cv';
@@ -64,6 +66,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   const feats: AlignFeatures[] = [];
 
   // Pass 1 — decode + detect, one full-res bitmap at a time
+  let prevBoxes: Box[] = [];
   for (let i = 0; i < n; i++) {
     const frame = frames[i];
     await putBlob(frame.blobKey, metas[i].file.blob);
@@ -74,7 +77,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
       if (i === 0) emit({ type: 'loaded', count: n, megapixels: Math.round((bmp.width * bmp.height) / 1e5) / 10 });
       const work = fitSize(bmp.width, bmp.height, C.WORK_LONG_EDGE);
       const canvas = scaledCanvas(bmp, work.w, work.h);
-      const candidates = await detectFaces(canvas);
+      const candidates = await detectFaces(canvas, searchRegion(prevBoxes, work.w, work.h));
       const up = 1 / work.s;
       const raw: RawFace[] = [];
       for (const c of candidates) {
@@ -82,7 +85,9 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
         const r = await refineFace(bmp, full);
         if (r && !raw.some((q) => iou(q.box, r.box) > C.TILE_MERGE_IOU)) raw.push(r);
       }
+      raw.splice(0, raw.length, ...dropSmallOutliers(raw));
       raw.sort((a, b) => a.box.x - b.box.x);
+      prevBoxes = raw.map((r) => ({ x: r.box.x * work.s, y: r.box.y * work.s, w: r.box.w * work.s, h: r.box.h * work.s }));
       const ids: string[] = [];
       for (let k = 0; k < raw.length; k++) {
         const r = raw[k];
@@ -203,9 +208,17 @@ async function frameBlob(frame: Frame): Promise<Blob> {
 }
 
 async function scaledBitmap(frame: Frame, scale: number): Promise<ImageBitmap> {
-  const full = await decodeBlob(await frameBlob(frame), baseUrl);
+  const blob = await frameBlob(frame);
+  if (scale < 1) {
+    // decoding straight to the target size avoids ever holding the 80MB full-resolution bitmap
+    try {
+      const w = Math.round(frame.width * scale), h = Math.round(frame.height * scale);
+      return await createImageBitmap(blob, { imageOrientation: 'from-image', resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
+    } catch { /* e.g. HEIC: fall back to the full decode below */ }
+  }
+  const full = await decodeBlob(blob, baseUrl);
+  if (scale >= 1) return full;
   try {
-    if (scale >= 1) return await createImageBitmap(full);
     return await createImageBitmap(scaledCanvas(full, Math.round(full.width * scale), Math.round(full.height * scale)));
   } finally {
     full.close();
@@ -247,6 +260,10 @@ async function preview(session: Session, picks: Record<string, Pick>, longEdge: 
 }
 
 async function exportFull(session: Session, picks: Record<string, Pick>): Promise<{ blob: Blob; name: string }> {
+  // free the preview's bitmaps and canvas: the full-resolution render needs the memory
+  for (const b of cache.values()) b.close();
+  cache.clear();
+  comp = null;
   const frames = new Map(session.frames.map((f) => [f.id, f]));
   const base = frames.get(session.baseFrameId)!;
   const baseBmp = await scaledBitmap(base, 1);

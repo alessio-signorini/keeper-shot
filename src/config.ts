@@ -14,16 +14,30 @@ export const JPEG_QUALITY_FALLBACK = 0.92;
 
 // Detect
 export const MAX_FACES = 50;
-export const MIN_FACE_CONFIDENCE = 0.5;
-export const MIN_FACE_PX = 40;
-export const TILE_SIZES = [640, 400];
+// Hundreds of tiny tile inferences: CPU (XNNPACK) is ~7x faster than WebGL here, where GPU readback dominates
+export const DETECT_DELEGATE: 'CPU' | 'GPU' = 'CPU';
+export const MIN_FACE_CONFIDENCE = 0.5; // full-res verification (refineFace)
+export const REFINE_PRESENCE = 0.9; // landmark model's "this is a face" score required in verification (rejects feet, patterns)
+export const SCAN_CONFIDENCE = 0.35; // tile scan: permissive, false hits are rejected by the verification pass
+export const MIN_FACE_PX = 12; // absolute floor (working-res px)
+export const MIN_FACE_FRAC = 0.014; // smallest face searched for, as a fraction of the long edge (~1.8% in a 50-person group shot)
+export const TILE_PER_FACE = 6; // the detector finds faces covering ~1/6 of its input
+export const TILE_COARSEST_FRAC = 0.32;
+export const TILE_STEP = 0.6; // ratio between successive tile sizes
+export const TILE_REGION_BELOW = 0.2; // tiles smaller than this × long edge only scan the group region (after frame 1)
+export const TILE_REGION_MARGIN = 0.12;
+export const TILE_REGION_MIN_FACES = 3;
 export const TILE_OVERLAP = 0.25;
 export const TILE_MERGE_IOU = 0.5;
 export const REFINE_CONTEXT = 2.5; // crop side / face size for the full-res verification pass
+export const MIN_REL_FACE = 0.65; // drop faces smaller than this × the frame's median face (feet, patterns, distant passers-by)
+export const MIN_REL_FACE_COUNT = 5; // only when the frame has at least this many faces
+export const GAZE_SATURATED = 0.93;
+export const GAZE_SATURATED_MAX = 2; // reject a "face" with this many gaze blendshapes above GAZE_SATURATED
 export const REFINE_PX = 512;
+export const REFINE_MIN_PX = 192; // upsample tiny crops so the landmarker gets enough pixels
 export const REFINE_MIN_IOU = 0.3;
 export const SHARPNESS_CROP_PX = 128;
-export const BIG_IMAGE_PX = 1000;
 
 // Align
 export const ORB_FEATURES = 5000;

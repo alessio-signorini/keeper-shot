@@ -47,6 +47,8 @@ for (const dir of bursts) {
     test.skip(images.length < 2, 'needs at least two images');
     await page.goto('/');
     await page.locator('input[type=file]').setInputFiles(images);
+    // let the page finish decoding thumbnails first: overlapping with the worker's decode of 20MP photos exhausts small CI/containers
+    await expect(page.locator('img')).toHaveCount(images.length, { timeout: 60_000 });
     await page.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible({ timeout: 150_000 });
 

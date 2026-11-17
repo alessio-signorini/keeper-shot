@@ -39,6 +39,13 @@ export function getApi(): Comlink.Remote<PipelineApi> {
   return api;
 }
 
+/** WASM heaps (face model, OpenCV alignment) never shrink; a fresh worker gives that memory back before preview/export. */
+function recycleWorker() {
+  worker?.terminate();
+  worker = null;
+  api = null;
+}
+
 const log = (m: string) => (feed.value = [...feed.value, m]);
 
 function onEvent(e: PipelineEvent) {
@@ -82,6 +89,7 @@ export async function start() {
       list.map((f) => ({ name: f.name, blob: f })),
       Comlink.proxy(onEvent),
     );
+    recycleWorker();
     session.value = s;
     await refreshPreview();
     percent.value = 100;

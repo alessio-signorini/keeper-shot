@@ -2,6 +2,8 @@ import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import * as C from '../config';
 import { boxOf, iou } from '../core/geometry';
 import { poseFromMatrix } from '../core/pose';
+import { implausibleGaze } from '../core/faceFilters';
+import { tilePlan } from '../core/tiles';
 import type { Box, Pt } from '../types';
 
 export interface RawFace {
@@ -11,34 +13,46 @@ export interface RawFace {
   box: Box;
 }
 
+// `scanner` only finds faces across hundreds of tiles; blendshapes and head pose are expensive per face, so only
+// `landmarker` computes them, once per face, on the full-resolution crop (see refineFace).
 let landmarker: FaceLandmarker | null = null;
+let mode: 'scan' | 'full' | null = null;
+
+// One model instance (a second one costs ~100MB of WASM heap); options are switched between scanning and refining.
+async function setMode(m: 'scan' | 'full'): Promise<void> {
+  if (mode === m) return;
+  const full = m === 'full';
+  await landmarker!.setOptions({
+    outputFaceBlendshapes: full,
+    outputFacialTransformationMatrixes: full,
+    minFaceDetectionConfidence: full ? C.MIN_FACE_CONFIDENCE : C.SCAN_CONFIDENCE,
+    minFacePresenceConfidence: full ? C.REFINE_PRESENCE : 0.5,
+  });
+  mode = m;
+}
 
 export async function initDetector(baseUrl: string): Promise<void> {
   if (landmarker) return;
   const fileset = await FilesetResolver.forVisionTasks(new URL('mediapipe-wasm', baseUrl).href);
-  const make = (delegate: 'GPU' | 'CPU') =>
-    FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: new URL('models/face_landmarker.task', baseUrl).href, delegate },
-      runningMode: 'IMAGE',
-      numFaces: C.MAX_FACES,
-      outputFaceBlendshapes: true,
-      outputFacialTransformationMatrixes: true,
-      minFaceDetectionConfidence: C.MIN_FACE_CONFIDENCE,
-    });
-  try {
-    landmarker = await make('GPU');
-  } catch {
-    landmarker = await make('CPU');
-  }
+  landmarker = await FaceLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: new URL('models/face_landmarker.task', baseUrl).href, delegate: C.DETECT_DELEGATE },
+    runningMode: 'IMAGE',
+    numFaces: C.MAX_FACES,
+    outputFaceBlendshapes: false,
+    outputFacialTransformationMatrixes: false,
+    minFaceDetectionConfidence: C.SCAN_CONFIDENCE,
+  });
+  mode = 'scan';
 }
 
 /** Free the model and its WASM heap once detection is done (OpenCV needs the memory next). */
 export function closeDetector(): void {
   landmarker?.close();
   landmarker = null;
+  mode = null;
 }
 
-function run(image: ImageBitmap, offX: number, offY: number, w: number, h: number, minFace = C.MIN_FACE_PX): RawFace[] {
+function run(image: ImageBitmap, offX: number, offY: number, w: number, h: number, minFace = C.MIN_FACE_PX, full = false): RawFace[] {
   const res = landmarker!.detect(image);
   const out: RawFace[] = [];
   res.faceLandmarks.forEach((lm, i) => {
@@ -53,13 +67,6 @@ function run(image: ImageBitmap, offX: number, offY: number, w: number, h: numbe
   return out;
 }
 
-function tileStarts(len: number, tile: number): number[] {
-  if (len <= tile) return [0];
-  const step = Math.max(1, Math.round(tile * (1 - C.TILE_OVERLAP)));
-  const n = Math.ceil((len - tile) / step) + 1;
-  return Array.from({ length: n }, (_, i) => Math.round((i * (len - tile)) / (n - 1)));
-}
-
 const same = (a: Box, b: Box) => {
   const ca = [a.x + a.w / 2, a.y + a.h / 2], cb = [b.x + b.w / 2, b.y + b.h / 2];
   const inside = (c: number[], r: Box) => c[0] > r.x && c[0] < r.x + r.w && c[1] > r.y && c[1] < r.y + r.h;
@@ -67,59 +74,52 @@ const same = (a: Box, b: Box) => {
 };
 
 /**
- * Detect faces in a working-resolution canvas. MediaPipe's detector internally downsizes its input to
- * ~128px, so group-photo faces vanish on the whole image; scanning overlapping tiles keeps them resolvable.
+ * Detect faces in a working-resolution canvas. MediaPipe's detector downsizes its input to ~128px and only finds
+ * faces covering ~1/6 of it, so the frame is scanned with overlapping tiles at several scales (see core/tiles).
+ * `region` limits the fine scales to where the group was found in the previous frame.
  */
-export async function detectFaces(canvas: OffscreenCanvas): Promise<RawFace[]> {
+export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promise<RawFace[]> {
   const w = canvas.width, h = canvas.height;
   const out: RawFace[] = [];
   const add = (fs: RawFace[]) => {
     for (const f of fs) if (!out.some((m) => same(m.box, f.box))) out.push(f);
   };
 
+  await setMode('scan');
   const whole = await createImageBitmap(canvas);
   try {
     add(run(whole, 0, 0, w, h));
   } finally {
     whole.close();
   }
-  if (Math.max(w, h) < C.BIG_IMAGE_PX) return out;
 
-  for (const size of C.TILE_SIZES) {
-    const tw = Math.min(w, size), th = Math.min(h, size);
-    for (const ty of tileStarts(h, th)) {
-      for (const tx of tileStarts(w, tw)) {
-        const tile = await createImageBitmap(canvas, tx, ty, tw, th);
-        try {
-          // faces cut by an interior tile edge are partial; a neighbouring tile sees them whole
-          const edge = 3;
-          add(run(tile, tx, ty, tw, th).filter((f) =>
-            (tx === 0 || f.box.x > tx + edge) && (tx + tw >= w || f.box.x + f.box.w < tx + tw - edge) &&
-            (ty === 0 || f.box.y > ty + edge) && (ty + th >= h || f.box.y + f.box.h < ty + th - edge)));
-        } finally {
-          tile.close();
-        }
-      }
+  const edge = 3;
+  for (const t of tilePlan(w, h, region)) {
+    const tile = await createImageBitmap(canvas, t.x, t.y, t.w, t.h);
+    try {
+      // faces cut by an interior tile edge are partial; an overlapping tile sees them whole
+      add(run(tile, t.x, t.y, t.w, t.h).filter((f) =>
+        (t.x === 0 || f.box.x > t.x + edge) && (t.x + t.w >= w || f.box.x + f.box.w < t.x + t.w - edge) &&
+        (t.y === 0 || f.box.y > t.y + edge) && (t.y + t.h >= h || f.box.y + f.box.h < t.y + t.h - edge)));
+    } finally {
+      tile.close();
     }
   }
   return out;
 }
 
-/**
- * Re-run the landmarker on a full-resolution crop around a candidate (full-res box). Verifies the candidate is a
- * real face (tile hits on hands or props usually vanish) and yields landmarks/blendshapes from far more pixels.
- */
-export async function refineFace(src: ImageBitmap, box: Box): Promise<RawFace | null> {
-  const side = Math.min(Math.max(box.w, box.h) * C.REFINE_CONTEXT, src.width, src.height);
+async function detectInCrop(src: ImageBitmap, box: Box, context: number, full: boolean): Promise<RawFace | null> {
+  const side = Math.min(Math.max(box.w, box.h) * context, src.width, src.height);
   const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
   const sx = Math.round(Math.min(Math.max(0, cx - side / 2), src.width - side));
   const sy = Math.round(Math.min(Math.max(0, cy - side / 2), src.height - side));
   const sw = Math.round(side), sh = Math.round(side);
-  const out = Math.min(sw, C.REFINE_PX);
+  const out = Math.max(C.REFINE_MIN_PX, Math.min(sw, C.REFINE_PX));
+  await setMode(full ? 'full' : 'scan');
   const crop = await createImageBitmap(src, sx, sy, sw, sh, { resizeWidth: out, resizeHeight: out, resizeQuality: 'high' });
   let found: RawFace[];
   try {
-    found = run(crop, sx, sy, sw, sh, 0);
+    found = run(crop, sx, sy, sw, sh, 0, full);
   } finally {
     crop.close();
   }
@@ -129,6 +129,15 @@ export async function refineFace(src: ImageBitmap, box: Box): Promise<RawFace | 
     if (v >= bestIou) { best = f; bestIou = v; }
   }
   return best;
+}
+
+/**
+ * Re-run the landmarker on a full-resolution crop around a candidate (full-res box). Verifies the candidate is a
+ * real face (most tile hits on hands or props vanish) and yields landmarks/blendshapes from far more pixels.
+ */
+export async function refineFace(src: ImageBitmap, box: Box): Promise<RawFace | null> {
+  const face = await detectInCrop(src, box, C.REFINE_CONTEXT, true);
+  return face && !implausibleGaze(face.blend) ? face : null;
 }
 
 /** Variance of the 4-neighbour Laplacian on a grayscale crop resized to SHARPNESS_CROP_PX wide. */
