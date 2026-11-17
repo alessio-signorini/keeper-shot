@@ -13,21 +13,20 @@ function Candidate({ s, faceId, draft, onSelect }: { s: Session; faceId: string;
   const baseFaceId = person.faces[s.baseFrameId];
   const isBase = faceId === baseFaceId;
   const feas = isBase ? null : swapFeasibility(face, baseFaceId ? s.faces[baseFaceId] : undefined);
-  const disabled = feas ? !feas.eyes.ok && !feas.face.ok : false;
+  const risky = feas ? !feas.eyes.ok && !feas.face.ok : false;
   const reason = feas?.face.reason ?? feas?.eyes.reason;
   const pct = (v: number) => Math.round(v * 100);
   return (
     <button
-      disabled={disabled}
       onClick={() => onSelect(faceId)}
-      class={`w-28 shrink-0 rounded-xl border p-1.5 text-left ${draft.faceId === faceId ? 'border-orange-500 ring-2 ring-orange-300' : 'border-neutral-200'} ${disabled ? 'opacity-40' : ''}`}
+      class={`w-28 shrink-0 rounded-xl border p-1.5 text-left ${draft.faceId === faceId ? 'border-orange-500 ring-2 ring-orange-300' : 'border-neutral-200'} ${risky ? 'opacity-60' : ''}`}
     >
       <span class="block h-24 overflow-hidden rounded-lg bg-neutral-100">{url && <img src={url} class="h-full w-full object-cover" alt="" />}</span>
       <span class="mt-1 flex flex-wrap gap-x-1.5 text-[11px] text-neutral-700">
         <span>👁 {pct(face.score.eyes)}</span><span>↗ {pct(face.score.gaze)}</span><span>🙂 {pct(face.score.smile)}</span>
       </span>
       <span class="text-xs font-semibold">{pct(face.score.total)}{isBase && ' · base'}</span>
-      {disabled && <span class="block text-[10px] text-red-600">{reason}</span>}
+      {risky && <span class="block text-[10px] text-amber-600">{reason} · tap to force</span>}
     </button>
   );
 }
@@ -51,7 +50,7 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
     if (faceId === baseFaceId) return preview({ faceId, mode: 'base' });
     const feas = swapFeasibility(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined);
     const keep = (draft.mode === 'eyes' || draft.mode === 'face') && feas[draft.mode].ok ? draft.mode : autoMode(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined, feas);
-    if (keep) preview({ faceId, mode: keep });
+    preview({ faceId, mode: keep ?? 'face' }); // infeasible faces can still be forced as a face swap
   };
 
   const sel = draft.faceId;
@@ -89,7 +88,7 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
       </div>
       <div class="my-2 inline-flex overflow-hidden rounded-lg border text-sm">
         {(['eyes', 'face'] as SwapMode[]).map((m) => {
-          const ok = !!feas && feas[m].ok;
+          const ok = !!feas && (feas[m].ok || m === 'face');
           return (
             <button
               key={m}

@@ -25,3 +25,4 @@
 
 - Grouping also matches faces within `GROUP_MAX_DIST` face widths, then merges fragments that never share a frame when their distance is within `GROUP_MERGE_BASE + GROUP_MERGE_PER_FRAME × frame gap` (movers). Verified by unit test only; fixture counts not re-measured.
 - Cutout/printed faces count as people (family expects 14 = 13 + the birthday-girl cutout). People whose median face sharpness is < `MIN_REL_SHARPNESS` × the median person's are dropped (out-of-focus background mistaken for a face; was 15 vs ~290 typical).
+- Face sheet: faces whose pose/shape make a swap infeasible are no longer disabled; tapping one forces a face swap (labelled 'tap to force'). Auto-selection still respects feasibility.
