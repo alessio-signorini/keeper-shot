@@ -31,6 +31,7 @@ export const TILE_OVERLAP = 0.25;
 export const TILE_MERGE_IOU = 0.5;
 export const REFINE_CONTEXT = 2.5; // crop side / face size for the full-res verification pass
 export const MIN_REL_FACE = 0.65; // drop faces smaller than this × the frame's median face (feet, patterns, distant passers-by)
+export const MIN_REL_SHARPNESS = 0.15; // drop people whose median face sharpness is below this × the median person's
 export const MIN_REL_FACE_COUNT = 5; // only when the frame has at least this many faces
 export const GAZE_SATURATED = 0.93;
 export const GAZE_SATURATED_MAX = 2; // reject a "face" with this many gaze blendshapes above GAZE_SATURATED

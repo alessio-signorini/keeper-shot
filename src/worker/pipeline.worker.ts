@@ -4,7 +4,7 @@ import * as C from '../config';
 import { applyAll, boxOf, iou } from '../core/geometry';
 import { alignByFaces, scoreAlignment } from '../core/faceAlign';
 import { groupFaces } from '../core/group';
-import { dropSmallOutliers } from '../core/faceFilters';
+import { dropBlurryPeople, dropSmallOutliers } from '../core/faceFilters';
 import { searchRegion } from '../core/tiles';
 import { estimateJpegQuality } from '../core/jpegQuality';
 import { eyesScore, funnyPenalty, normalizeSharpness, scoreFace } from '../core/score';
@@ -170,7 +170,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   await saveSession(session);
 
   // Group, score, pick
-  const people = groupFaces(frames, faces);
+  const people = dropBlurryPeople(groupFaces(frames, faces), faces);
   const keep = new Set(people.flatMap((p) => Object.values(p.faces)));
   for (const id of Object.keys(faces)) if (!keep.has(id)) delete faces[id];
   for (const p of people) {

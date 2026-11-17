@@ -24,3 +24,4 @@
 - Fixture status (people found / expected): big-family 48/52, family 15/13, kids 29/19, portrait 2/1. Over-splitting (moving subjects) and a few undetected faces remain.
 
 - Grouping also matches faces within `GROUP_MAX_DIST` face widths, then merges fragments that never share a frame when their distance is within `GROUP_MERGE_BASE + GROUP_MERGE_PER_FRAME × frame gap` (movers). Verified by unit test only; fixture counts not re-measured.
+- Cutout/printed faces count as people (family expects 14 = 13 + the birthday-girl cutout). People whose median face sharpness is < `MIN_REL_SHARPNESS` × the median person's are dropped (out-of-focus background mistaken for a face; was 15 vs ~290 typical).

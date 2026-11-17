@@ -1,5 +1,5 @@
 import * as C from '../config';
-import type { Box } from '../types';
+import type { Box, Face, Person } from '../types';
 
 /**
  * Drop detections much smaller than the frame's typical face. In group shots real faces (kids and adults, front
@@ -20,4 +20,13 @@ const GAZE = ['eyeLookInLeft', 'eyeLookOutLeft', 'eyeLookUpLeft', 'eyeLookDownLe
  */
 export function implausibleGaze(blend: Record<string, number>): boolean {
   return GAZE.filter((k) => (blend[k] ?? 0) > C.GAZE_SATURATED).length >= C.GAZE_SATURATED_MAX;
+}
+
+/** Drop people whose faces are far blurrier than everyone else's: out-of-focus background that looked like a face. */
+export function dropBlurryPeople(people: Person[], faces: Record<string, Face>): Person[] {
+  if (people.length < C.MIN_REL_FACE_COUNT) return people;
+  const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const sharp = people.map((p) => med(Object.values(p.faces).map((id) => faces[id].sharpness)));
+  const floor = med(sharp) * C.MIN_REL_SHARPNESS;
+  return people.filter((_, i) => sharp[i] >= floor);
 }
