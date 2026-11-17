@@ -56,7 +56,6 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
 
   const sel = draft.faceId;
   const feas = sel && sel !== baseFaceId ? swapFeasibility(s.faces[sel], baseFaceId ? s.faces[baseFaceId] : undefined) : null;
-  const modes: SwapMode[] = feas ? (['eyes', 'face'] as SwapMode[]).filter((m) => feas[m].ok) : [];
 
   const confirm = async () => {
     await setPick({ personId, faceId: draft.faceId, mode: draft.mode, auto: false });
@@ -88,15 +87,22 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
         )}
         {Object.values(person.faces).map((fid) => <Candidate key={fid} s={s} faceId={fid} draft={draft} onSelect={select} />)}
       </div>
-      {modes.length > 1 && (
-        <div class="my-2 inline-flex overflow-hidden rounded-lg border text-sm">
-          {modes.map((m) => (
-            <button key={m} class={`px-4 py-1.5 ${draft.mode === m ? 'bg-orange-500 text-white' : ''}`} onClick={() => preview({ ...draft, mode: m })}>
+      <div class="my-2 inline-flex overflow-hidden rounded-lg border text-sm">
+        {(['eyes', 'face'] as SwapMode[]).map((m) => {
+          const ok = !!feas && feas[m].ok;
+          return (
+            <button
+              key={m}
+              disabled={!ok}
+              title={feas && !ok ? feas[m].reason : undefined}
+              class={`px-4 py-1.5 ${draft.mode === m ? 'bg-orange-500 text-white' : ''} ${ok ? '' : 'cursor-not-allowed text-neutral-300'}`}
+              onClick={() => preview({ ...draft, mode: m })}
+            >
               {m === 'eyes' ? 'Eyes' : 'Face'}
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
       <div class="mt-2 flex gap-2">
         <button class="flex-1 rounded-xl border py-2" onClick={cancel}>Cancel</button>
         <button class="flex-1 rounded-xl bg-orange-500 py-2 font-semibold text-white" onClick={confirm}>Confirm</button>
