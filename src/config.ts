@@ -58,6 +58,10 @@ export const FACE_ALIGN_SEED_TOL = 0.5;
 export const FACE_ALIGN_REFINE_TOLS = [0.6, 0.6, 0.35, 0.35];
 export const FACE_ALIGN_TOP = 10;
 
+// Photos where fewer than this fraction of the reference's faces line up are left out of the session
+export const FRAME_MIN_ALIGNED = 0.6;
+export const FRAME_MIN_KEPT = 4;
+
 // Group
 export const GROUP_MIN_IOU = 0.3;
 export const GROUP_MIN_FRAME_FRACTION = 0.25;

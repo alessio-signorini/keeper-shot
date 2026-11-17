@@ -169,6 +169,16 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   }
   await saveSession(session);
 
+  // Photos where people moved too much to line up with the rest can't be merged cleanly: leave them out.
+  const refCount = refFaces.length;
+  const lined = frames.map((f, i) => (i === refIdx || !refCount ? 1 : scoreAlignment(f.toRef, Object.values(faces).filter((x) => x.frameId === f.id), refFaces).matched / refCount));
+  const drop = new Set(frames.filter((_, i) => lined[i] < C.FRAME_MIN_ALIGNED).map((f) => f.id));
+  if (drop.size && frames.length - drop.size >= C.FRAME_MIN_KEPT) {
+    for (const f of frames) if (drop.has(f.id)) emit({ type: 'warn', message: `Photo ${f.name} left out: people moved too much to line up` });
+    for (const id of Object.keys(faces)) if (drop.has(faces[id].frameId)) delete faces[id];
+    frames.splice(0, frames.length, ...frames.filter((f) => !drop.has(f.id)));
+  }
+
   // Group, score, pick
   const people = dropBlurryPeople(groupFaces(frames, faces), faces);
   const keep = new Set(people.flatMap((p) => Object.values(p.faces)));
@@ -184,7 +194,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   session.baseFrameId = best.frameId;
   session.picks = best.picks;
   await saveSession(session);
-  emit({ type: 'grouped', people: people.length, frames: n, session });
+  emit({ type: 'grouped', people: people.length, frames: frames.length, session });
   emit({ type: 'base', frame: frames.findIndex((f) => f.id === best.frameId) + 1, swaps: best.swaps });
   emit({ type: 'progress', percent: alignBase + C.PROGRESS.align + C.PROGRESS.group });
   return session;
