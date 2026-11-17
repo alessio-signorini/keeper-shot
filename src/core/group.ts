@@ -52,6 +52,37 @@ function meanBox(bs: Box[]): Box {
   };
 }
 
+/**
+ * A person who moved between frames leaves one fragment per resting place. Fragments never sharing a frame can be the
+ * same person; merge the closest such pair while the distance stays within what the frame gap allows.
+ */
+function mergeFragments(clusters: Cluster[], order: string[]): void {
+  const idx = new Map(order.map((id, i) => [id, i]));
+  const span = (c: Cluster) => {
+    const ix = Object.keys(c.faces).map((k) => idx.get(k)!);
+    return { lo: Math.min(...ix), hi: Math.max(...ix) };
+  };
+  for (;;) {
+    let best: { a: number; b: number; score: number } | null = null;
+    for (let a = 0; a < clusters.length; a++) {
+      for (let b = a + 1; b < clusters.length; b++) {
+        if (Object.keys(clusters[a].faces).some((k) => k in clusters[b].faces)) continue;
+        const sa = span(clusters[a]), sb = span(clusters[b]);
+        const gap = sa.hi < sb.lo ? sb.lo - sa.hi : sb.hi < sa.lo ? sa.lo - sb.hi : 1; // interleaved: treat as adjacent
+        const ma = meanBox(clusters[a].boxes), mb = meanBox(clusters[b].boxes);
+        const d = Math.hypot(center(ma)[0] - center(mb)[0], center(ma)[1] - center(mb)[1]) / Math.max(ma.w, mb.w, 1);
+        const limit = C.GROUP_MERGE_BASE + C.GROUP_MERGE_PER_FRAME * gap;
+        if (d <= limit && (!best || d / limit < best.score)) best = { a, b, score: d / limit };
+      }
+    }
+    if (!best) return;
+    const keep = clusters[best.a], gone = clusters[best.b];
+    Object.assign(keep.faces, gone.faces);
+    keep.boxes.push(...gone.boxes);
+    clusters.splice(best.b, 1);
+  }
+}
+
 /** Cluster faces (in reference coords) into people across frames. */
 export function groupFaces(frames: Pick<Frame, 'id'>[], faces: Record<string, Face>): Person[] {
   const byFrame = new Map<string, Face[]>();
@@ -82,7 +113,8 @@ export function groupFaces(frames: Pick<Frame, 'id'>[], faces: Record<string, Fa
     const assign = clusters.length ? hungarian(cost) : fs.map(() => -1);
     fs.forEach((f, i) => {
       const j = assign[i];
-      if (j >= 0 && iou(f.refBox, means[j]) >= C.GROUP_MIN_IOU) {
+      const near = j >= 0 && Math.hypot(center(f.refBox)[0] - center(means[j])[0], center(f.refBox)[1] - center(means[j])[1]) <= C.GROUP_MAX_DIST * Math.max(f.refBox.w, means[j].w);
+      if (j >= 0 && (iou(f.refBox, means[j]) >= C.GROUP_MIN_IOU || near)) {
         clusters[j].faces[fr.id] = f.id;
         clusters[j].boxes.push(f.refBox);
       } else {
@@ -90,6 +122,8 @@ export function groupFaces(frames: Pick<Frame, 'id'>[], faces: Record<string, Fa
       }
     });
   }
+
+  mergeFragments(clusters, frames.map((f) => f.id));
 
   const minFrames = Math.max(1, Math.ceil(frames.length * C.GROUP_MIN_FRAME_FRACTION));
   return clusters

@@ -61,6 +61,9 @@ export const FACE_ALIGN_TOP = 10;
 export const GROUP_MIN_IOU = 0.3;
 export const GROUP_MIN_FRAME_FRACTION = 0.25;
 export const GROUP_CENTER_WEIGHT = 0.5;
+export const GROUP_MAX_DIST = 0.75; // face widths: also match a face this close to a person's mean position
+export const GROUP_MERGE_BASE = 1.0; // face widths: fragments in different frames merge within BASE + PER_FRAME × frame gap
+export const GROUP_MERGE_PER_FRAME = 0.8;
 
 // Score
 export const SCORE_WEIGHTS = { eyes: 0.4, gaze: 0.2, pose: 0.15, smile: 0.15, sharp: 0.1 };

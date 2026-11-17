@@ -107,6 +107,18 @@ describe('group', () => {
     expect(Object.keys(people[1].faces)).toHaveLength(4);
     expect(Object.keys(people[0].faces)).toHaveLength(5);
   });
+
+  it('keeps a person who moved a few face-widths as one person', () => {
+    const frames = [fr('f0'), fr('f1'), fr('f2'), fr('f3'), fr('f4'), fr('f5')];
+    const faces: Record<string, Face> = {};
+    frames.forEach((f, fi) => {
+      faces[`${f.id}:0`] = mkFace(f.id, 0, 100, 200); // stays put
+      faces[`${f.id}:1`] = mkFace(f.id, 1, fi < 3 ? 400 : 560, 200); // moves ~1.6 widths (face width 100)
+    });
+    const people = groupFaces(frames, faces);
+    expect(people).toHaveLength(2);
+    expect(Object.keys(people[1].faces)).toHaveLength(6);
+  });
 });
 
 describe('score', () => {

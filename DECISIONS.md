@@ -23,3 +23,4 @@
 - Memory: one `FaceLandmarker` instance switches options between scan and refine (a second instance cost ~100MB of WASM heap); the pipeline worker is terminated after analysis (WASM heaps never shrink) and previews decode straight to the target size with `createImageBitmap` resize. Export frees the preview caches first. Needed because 20MP bursts crashed the renderer in ~2GB containers.
 - Fixture status (people found / expected): big-family 48/52, family 15/13, kids 29/19, portrait 2/1. Over-splitting (moving subjects) and a few undetected faces remain.
 
+- Grouping also matches faces within `GROUP_MAX_DIST` face widths, then merges fragments that never share a frame when their distance is within `GROUP_MERGE_BASE + GROUP_MERGE_PER_FRAME × frame gap` (movers). Verified by unit test only; fixture counts not re-measured.
