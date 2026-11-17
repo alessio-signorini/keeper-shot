@@ -1,10 +1,10 @@
 import * as Comlink from 'comlink';
 import exifr from 'exifr';
 import * as C from '../config';
-import { applyAll, boxOf } from '../core/geometry';
+import { applyAll, boxOf, iou } from '../core/geometry';
 import { groupFaces } from '../core/group';
 import { estimateJpegQuality } from '../core/jpegQuality';
-import { funnyPenalty, normalizeSharpness, scoreFace } from '../core/score';
+import { eyesScore, funnyPenalty, normalizeSharpness, scoreFace } from '../core/score';
 import { chooseBase } from '../core/select';
 import { fthumbKey, frameKey, getBlob, putBlob, saveSession, thumbKey, clearAll } from '../db';
 import type { Face, Frame, Pick, PipelineEvent, Session } from '../types';
@@ -12,7 +12,7 @@ import { Aligner, maskBoxes, toGray, type AlignFeatures } from './align';
 import { Compositor, renderComposite } from './composite';
 import { installImportScripts, loadCV } from './cv';
 import { decodeBlob, fitSize, scaledCanvas } from './decode';
-import { detectFaces, faceThumb, initDetector, sharpnessOf } from './detect';
+import { closeDetector, detectFaces, faceThumb, initDetector, refineFace, sharpnessOf, type RawFace } from './detect';
 import { encodeJpeg, exportName } from './encode';
 
 installImportScripts();
@@ -50,7 +50,8 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   comp = null;
   await clearAll();
   await initDetector(baseUrl);
-  const metas = await Promise.all(files.map((f, i) => readMeta(f, i)));
+  const metas: Meta[] = [];
+  for (let i = 0; i < files.length; i++) metas.push(await readMeta(files[i], i));
   metas.sort((a, b) => a.time - b.time);
   const n = metas.length;
 
@@ -72,20 +73,26 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
       if (i === 0) emit({ type: 'loaded', count: n, megapixels: Math.round((bmp.width * bmp.height) / 1e5) / 10 });
       const work = fitSize(bmp.width, bmp.height, C.WORK_LONG_EDGE);
       const canvas = scaledCanvas(bmp, work.w, work.h);
-      const raw = (await detectFaces(canvas)).sort((a, b) => a.box.x - b.box.x);
+      const candidates = await detectFaces(canvas);
       const up = 1 / work.s;
+      const raw: RawFace[] = [];
+      for (const c of candidates) {
+        const full = { x: c.box.x * up, y: c.box.y * up, w: c.box.w * up, h: c.box.h * up };
+        const r = await refineFace(bmp, full);
+        if (r && !raw.some((q) => iou(q.box, r.box) > C.TILE_MERGE_IOU)) raw.push(r);
+      }
+      raw.sort((a, b) => a.box.x - b.box.x);
       const ids: string[] = [];
       for (let k = 0; k < raw.length; k++) {
         const r = raw[k];
         const id = `${frame.id}:${k}`;
-        const landmarks = r.landmarks.map(([x, y]): [number, number] => [x * up, y * up]);
-        const box = boxOf(landmarks);
+        const box = r.box;
         faces[id] = {
-          id, frameId: frame.id, landmarks, refLandmarks: landmarks, box, refBox: box,
-          blend: r.blend, pose: r.pose, sharpness: sharpnessOf(canvas, r.box), score: { ...blankScore }, thumbKey: thumbKey(id),
+          id, frameId: frame.id, landmarks: r.landmarks, refLandmarks: r.landmarks, box, refBox: box,
+          blend: r.blend, pose: r.pose, sharpness: sharpnessOf(bmp, box), score: { ...blankScore }, thumbKey: thumbKey(id),
         };
         ids.push(id);
-        await putBlob(thumbKey(id), await faceThumb(canvas, r.box));
+        await putBlob(thumbKey(id), await faceThumb(bmp, box));
         const sc = scoreFace(r.blend, r.pose, 1);
         emit({ type: 'thumb', faceId: id, frameId: frame.id, blink: sc.eyes < C.BLINK_THRESHOLD, away: sc.gaze < 0.5 || sc.pose < 0.4, funny: funnyPenalty(r.blend) > 0 });
       }
@@ -100,6 +107,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
     }
     emit({ type: 'progress', percent: ((C.PROGRESS.decode + C.PROGRESS.detect) * (i + 1)) / n });
   }
+  closeDetector();
   const session: Session = { frames, faces, people: [], refFrameId: '', baseFrameId: '', picks: {} };
   await saveSession(session);
 
@@ -142,7 +150,8 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   for (const p of people) {
     const ids = Object.values(p.faces);
     const norm = normalizeSharpness(ids.map((id) => faces[id].sharpness));
-    ids.forEach((id, i) => (faces[id].score = scoreFace(faces[id].blend, faces[id].pose, norm[i])));
+    const eyesRef = Math.max(...ids.map((id) => eyesScore(faces[id].blend)));
+    ids.forEach((id, i) => (faces[id].score = scoreFace(faces[id].blend, faces[id].pose, norm[i], eyesRef)));
   }
   session.people = people;
   const best = chooseBase(frames, people, faces);

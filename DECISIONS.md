@@ -9,3 +9,7 @@
 - Frames without `DateTimeOriginal` keep file order after dated frames.
 - The amber "low confidence" badge uses `best total < LOW_CONFIDENCE_TOTAL` (config).
 - EXIF export copies the allow-listed tags from the base JPEG via piexifjs, falling back to the parsed EXIF (Make/Model/DateTimeOriginal) for non-JPEG bases such as HEIC.
+- Detection scans the whole frame plus overlapping 640px and 400px tiles (`TILE_SIZES`): MediaPipe's detector shrinks its input to ~128px, so whole-frame detection misses group-photo faces. Faces cut by an interior tile edge are discarded; duplicates merge on IoU or centre-in-box.
+- The face model is closed after the detect pass so OpenCV loads with less memory pressure; upload thumbnails are decoded one at a time at 160px, and EXIF is read sequentially.
+- Every tile candidate is re-run through the landmarker on a full-resolution crop (`REFINE_*`): this rejects hands/props and gives landmarks, blendshapes, sharpness and thumbnails from full-res pixels instead of ~70px faces. Printed faces (e.g. a photo cutout) are still detected as people.
+- Blinks are flagged when eyes < `BLINK_THRESHOLD` or < `BLINK_REL` × the person's most-open eyes in the burst, since baseline openness varies by person and smile.

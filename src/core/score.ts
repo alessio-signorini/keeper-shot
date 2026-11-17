@@ -33,10 +33,15 @@ export function smileScore(b: Blend): number {
   return clamp(s - funnyPenalty(b), 0, 1);
 }
 
+/**
+ * `eyesRef` is the person's most-open eyes score across the burst: eye openness varies a lot between people
+ * (and with smiling), so a blink is also flagged when eyes drop well below that person's own best.
+ */
 export function scoreFace(
   blend: Blend,
   pose: { yaw: number; pitch: number },
   sharpNorm: number,
+  eyesRef = 1,
 ): FaceScore {
   const eyes = eyesScore(blend);
   const gaze = gazeScore(blend);
@@ -44,7 +49,7 @@ export function scoreFace(
   const smile = smileScore(blend);
   const w = C.SCORE_WEIGHTS;
   let total = w.eyes * eyes + w.gaze * gaze + w.pose * p + w.smile * smile + w.sharp * sharpNorm;
-  if (eyes < C.BLINK_THRESHOLD) total *= C.BLINK_PENALTY;
+  if (isBlink(eyes, eyesRef)) total *= C.BLINK_PENALTY;
   return { eyes, gaze, pose: p, smile, sharp: sharpNorm, total };
 }
 
@@ -54,4 +59,8 @@ export function normalizeSharpness(values: number[]): number[] {
   const lo = Math.min(...values), hi = Math.max(...values);
   if (hi - lo < 1e-9) return values.map(() => 1);
   return values.map((v) => (v - lo) / (hi - lo));
+}
+
+export function isBlink(eyes: number, eyesRef = 1): boolean {
+  return eyes < C.BLINK_THRESHOLD || eyes < C.BLINK_REL * eyesRef;
 }

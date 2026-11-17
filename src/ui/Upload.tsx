@@ -1,11 +1,35 @@
-import { useEffect, useMemo } from 'preact/hooks';
-import { APP_NAME, MAX_FILES, MIN_FILES } from '../config';
+import { useEffect, useState } from 'preact/hooks';
+import { APP_NAME, MAX_FILES, MIN_FILES, THUMB_PX, THUMB_QUALITY } from '../config';
 import { files, resume, savedSession, start, startOver } from '../state';
 
 export function Upload() {
   const list = files.value;
-  const urls = useMemo(() => list.map((f) => URL.createObjectURL(f)), [list]);
-  useEffect(() => () => urls.forEach(URL.revokeObjectURL), [urls]);
+  const [urls, setUrls] = useState<string[]>([]);
+  // small thumbnails, one decode at a time, so a 24MP burst is never fully decoded on the page
+  useEffect(() => {
+    let live = true;
+    const made: string[] = [];
+    setUrls([]);
+    void (async () => {
+      for (const f of list) {
+        try {
+          const bmp = await createImageBitmap(f, { resizeWidth: THUMB_PX, resizeQuality: 'low', imageOrientation: 'from-image' });
+          const c = document.createElement('canvas');
+          c.width = bmp.width;
+          c.height = bmp.height;
+          c.getContext('2d')!.drawImage(bmp, 0, 0);
+          bmp.close();
+          const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/jpeg', THUMB_QUALITY));
+          made.push(blob ? URL.createObjectURL(blob) : '');
+        } catch {
+          made.push('');
+        }
+        if (!live) return;
+        setUrls([...made]);
+      }
+    })();
+    return () => { live = false; made.forEach((u) => u && URL.revokeObjectURL(u)); };
+  }, [list]);
   const ok = list.length >= MIN_FILES && list.length <= MAX_FILES;
 
   const pick = (fl: FileList | File[] | null) => {
@@ -37,7 +61,7 @@ export function Upload() {
       {list.length > 0 && (
         <>
           <div class="grid grid-cols-4 gap-2 sm:grid-cols-6">
-            {urls.map((u, i) => <img key={u} src={u} alt={list[i].name} class="aspect-square w-full rounded-lg object-cover" />)}
+            {urls.map((u, i) => u && <img key={u} src={u} alt={list[i].name} class="aspect-square w-full rounded-lg object-cover" />)}
           </div>
           <p class="text-sm text-neutral-500">
             {list.length} selected{!ok && ` — need ${MIN_FILES}–${MAX_FILES}`}

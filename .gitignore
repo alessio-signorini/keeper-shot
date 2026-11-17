@@ -4,3 +4,4 @@ tests/fixtures/*
 !tests/fixtures/README.md
 test-results
 playwright-report
+.DS_Store
