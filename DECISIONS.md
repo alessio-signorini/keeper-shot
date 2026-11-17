@@ -1,0 +1,11 @@
+- Single ES-module pipeline worker; MediaPipe/OpenCV loaders call `importScripts`, which module workers lack, so `worker/cv.ts` shims it with sync XHR + global eval.
+- OpenCV.js, MediaPipe wasm and libheif are copied to `dist/` by vite-plugin-static-copy (flattened) and precached by the service worker for offline use.
+- `estimateAffinePartial2D` and `seamlessClone` are absent from the OpenCV.js build, so the similarity fallback is a small JS RANSAC and Laplacian-pyramid blending is always used.
+- Source patches are warped with canvas `drawImage` (high-quality smoothing) instead of `cv.warpAffine`; masks, Lab colour transfer and pyramid blending use OpenCV.
+- Source frames are decoded in full (not cropped regions) because `createImageBitmap` crop + EXIF orientation behaves inconsistently across browsers; the preview uses a small LRU cache of downscaled frames.
+- Preview re-renders all swaps sequentially on each change (patches read the current canvas, so overlapping ROIs stay correct) instead of caching per-ROI results.
+- The ORB match overlay is omitted from `/#debug`; it shows landmarks, boxes + person IDs, swap masks, alignment inliers/toRef and the score table.
+- Faces not assigned to a person (dropped passers-by) are removed from the session.
+- Frames without `DateTimeOriginal` keep file order after dated frames.
+- The amber "low confidence" badge uses `best total < LOW_CONFIDENCE_TOTAL` (config).
+- EXIF export copies the allow-listed tags from the base JPEG via piexifjs, falling back to the parsed EXIF (Make/Model/DateTimeOriginal) for non-JPEG bases such as HEIC.
