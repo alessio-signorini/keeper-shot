@@ -3,6 +3,7 @@ import { get } from 'idb-keyval';
 import { loadSession } from '../db';
 import { maskPolygons } from '../worker/composite';
 import { apply, center, invert } from '../core/geometry';
+import { isSwap } from '../core/select';
 import type { Session } from '../types';
 
 type Layer = 'landmarks' | 'boxes' | 'masks' | 'matches';
@@ -58,8 +59,8 @@ export function Debug() {
           ctx.font = `${Math.round(face.box.h * 0.2)}px sans-serif`;
           ctx.fillText(personOf(face.id), face.box.x, face.box.y - lw);
         }
-        const pick = Object.values(s.picks).find((p) => p.faceId === face.id && p.mode !== 'base');
-        if (on.masks && pick && pick.mode !== 'base') {
+        const pick = Object.values(s.picks).find((p) => p.faceId === face.id && isSwap(p));
+        if (on.masks && pick && (pick.mode === 'eyes' || pick.mode === 'face')) {
           ctx.strokeStyle = '#a855f7';
           for (const { poly } of maskPolygons(face.landmarks, pick.mode)) {
             ctx.beginPath();
@@ -89,7 +90,7 @@ export function Debug() {
         ))}
         <a class="underline" href="#">back</a>
       </div>
-      <div class="text-neutral-600">alignment inliers: {frame.alignInliers} · toRef: [{frame.toRef.map((v) => v.toFixed(3)).join(', ')}]</div>
+      <div class="text-neutral-600">aligned by: {frame.alignMethod ?? 'orb'} · background inliers: {frame.alignInliers} · toRef: [{frame.toRef.map((v) => v.toFixed(3)).join(', ')}]</div>
       <canvas ref={canvas} class="w-full max-w-4xl bg-neutral-200" />
       <table class="w-full max-w-4xl text-left">
         <thead><tr><th>face</th><th>person</th><th>eyes</th><th>gaze</th><th>pose</th><th>smile</th><th>sharp</th><th>total</th><th>center</th></tr></thead>

@@ -4,7 +4,8 @@ import { poseFromMatrix } from '../../src/core/pose';
 import { estimateJpegQuality, estimateQualityFromTable } from '../../src/core/jpegQuality';
 import { groupFaces, hungarian } from '../../src/core/group';
 import { normalizeSharpness, scoreFace } from '../../src/core/score';
-import { chooseBase, choosePick, swapFeasibility } from '../../src/core/select';
+import { chooseBase, choosePick, rebase, swapFeasibility } from '../../src/core/select';
+import { alignByFaces, scoreAlignment } from '../../src/core/faceAlign';
 import type { Face, Frame, Mat3, Pt } from '../../src/types';
 
 describe('geometry', () => {
@@ -169,10 +170,50 @@ describe('select', () => {
     const c = mkFace('f1', 0, 100, 200, { pose: { yaw: 20, pitch: 0, roll: 0 } });
     expect(swapFeasibility(c, a).face.ok).toBe(false);
   });
+  it('leaves the photo untouched for a person missing from the base frame, and keeps a manual skip', () => {
+    const { frames, faces, people } = setup();
+    delete faces['f0:0'];
+    delete people[0].faces.f0;
+    const c = choosePick(people[0], 'f0', faces);
+    expect(c.pick).toMatchObject({ mode: 'skip', faceId: '' });
+    const manualSkip = { p1: { personId: 'p1', faceId: '', mode: 'skip' as const, auto: false } };
+    expect(rebase(frames[0], people, faces, manualSkip).p1.mode).toBe('skip');
+    expect(rebase(frames[1], people, faces, manualSkip).p1.mode).toBe('base');
+  });
   it('only allows face mode when the base face is missing', () => {
     const src = mkFace('f1', 0, 100, 200);
     const f = swapFeasibility(src, undefined);
     expect(f.eyes.ok).toBe(false);
     expect(f.face.ok).toBe(true);
+  });
+});
+
+describe('faceAlign', () => {
+  // a row-and-a-half of faces; frame B = frame A scaled 1.08, rotated 2°, shifted (camera moved)
+  const T: Mat3 = [1.08 * Math.cos(0.035), -1.08 * Math.sin(0.035), 140, 1.08 * Math.sin(0.035), 1.08 * Math.cos(0.035), -60, 0, 0, 1];
+  const xs = [100, 260, 420, 580, 740, 900, 180, 500, 820];
+  const ys = [300, 310, 295, 305, 300, 310, 520, 530, 515];
+  const mk = (cx: number, cy: number, m: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]) => {
+    const l = lm(cx, cy, 80).map((p) => apply(m, p));
+    const c = apply(m, [cx, cy]), w = 80 * Math.hypot(m[0], m[3]);
+    return { landmarks: l, box: { x: c[0] - w / 2, y: c[1] - w / 2, w, h: w } };
+  };
+
+  it('recovers a camera move from faces even when some people moved or were missed', () => {
+    const A = xs.map((x, i) => mk(x, ys[i]));
+    const B = xs.map((x, i) => mk(x, ys[i], T));
+    B.splice(2, 1); // missed detection in B
+    A[5] = mk(xs[5] + 150, ys[5]); // one person moved
+    const r = alignByFaces(A, B)!;
+    expect(r.matched).toBe(7);
+    const p = apply(r.m, [500, 400]), q = apply(T, [500, 400]);
+    expect(Math.hypot(p[0] - q[0], p[1] - q[1])).toBeLessThan(2);
+    // a background-only transform that is off by a face width lines up far fewer faces
+    const off: Mat3 = [T[0], T[1], T[2] + 90, T[3], T[4], T[5], 0, 0, 1];
+    expect(scoreAlignment(off, A, B).matched).toBeLessThan(r.matched);
+  });
+
+  it('declines with too few faces', () => {
+    expect(alignByFaces([mk(100, 100), mk(300, 100)], [mk(100, 100, T), mk(300, 100, T)])).toBeNull();
   });
 });

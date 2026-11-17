@@ -36,6 +36,12 @@ export const ALIGN_PERSPECTIVE_MAX = 0.002;
 export const ALIGN_SCALE_MIN = 0.8;
 export const ALIGN_SCALE_MAX = 1.25;
 export const DEBUG_MAX_MATCHES = 150;
+// Face-based alignment (used when it lines up more faces than background alignment)
+export const FACE_ALIGN_MIN_FACES = 3;
+export const FACE_ALIGN_TOL = 0.35; // face widths: a face "lines up" if its centre lands this close
+export const FACE_ALIGN_SEED_TOL = 0.5;
+export const FACE_ALIGN_REFINE_TOLS = [0.6, 0.6, 0.35, 0.35];
+export const FACE_ALIGN_TOP = 10;
 
 // Group
 export const GROUP_MIN_IOU = 0.3;

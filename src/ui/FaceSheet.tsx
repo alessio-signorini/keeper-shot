@@ -1,10 +1,10 @@
 import { useState } from 'preact/hooks';
 import { autoMode, swapFeasibility } from '../core/select';
 import { setPick, refreshPreview, session } from '../state';
-import type { Pick, Session, SwapMode } from '../types';
+import type { Pick, PickMode, Session, SwapMode } from '../types';
 import { useStored } from './useStored';
 
-interface Draft { faceId: string; mode: SwapMode | 'base' }
+interface Draft { faceId: string; mode: PickMode }
 
 function Candidate({ s, faceId, draft, onSelect }: { s: Session; faceId: string; draft: Draft; onSelect: (faceId: string) => void }) {
   const url = useStored(`thumb:${faceId}`);
@@ -37,7 +37,9 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
   const person = s.people.find((p) => p.id === personId)!;
   const current = s.picks[personId];
   const baseFaceId = person.faces[s.baseFrameId];
-  const [draft, setDraft] = useState<Draft>({ faceId: current?.faceId ?? baseFaceId, mode: current?.mode ?? 'base' });
+  const [draft, setDraft] = useState<Draft>(
+    current ? { faceId: current.faceId, mode: current.mode } : baseFaceId ? { faceId: baseFaceId, mode: 'base' } : { faceId: '', mode: 'skip' },
+  );
 
   const preview = (d: Draft) => {
     setDraft(d);
@@ -48,7 +50,7 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
   const select = (faceId: string) => {
     if (faceId === baseFaceId) return preview({ faceId, mode: 'base' });
     const feas = swapFeasibility(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined);
-    const keep = draft.mode !== 'base' && feas[draft.mode].ok ? draft.mode : autoMode(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined, feas);
+    const keep = (draft.mode === 'eyes' || draft.mode === 'face') && feas[draft.mode].ok ? draft.mode : autoMode(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined, feas);
     if (keep) preview({ faceId, mode: keep });
   };
 
@@ -68,7 +70,22 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
   return (
     <div class="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-3xl rounded-t-2xl bg-white p-3 shadow-[0_-8px_30px_rgba(0,0,0,.2)]" role="dialog" aria-label="Choose face">
       <div class="mb-2 text-sm font-semibold">Person {personId.replace('p', '')}</div>
+      {!baseFaceId && (
+        <p class="mb-2 text-xs text-neutral-500">
+          Not detected in this photo (often turned away or hidden). Adding a face here can look doubled — keep “None” unless it looks right.
+        </p>
+      )}
       <div class="flex gap-2 overflow-x-auto pb-2">
+        {!baseFaceId && (
+          <button
+            onClick={() => preview({ faceId: '', mode: 'skip' })}
+            class={`flex w-28 shrink-0 flex-col items-center justify-center rounded-xl border p-1.5 text-center ${draft.mode === 'skip' ? 'border-orange-500 ring-2 ring-orange-300' : 'border-neutral-200'}`}
+          >
+            <span class="flex h-24 w-full items-center justify-center rounded-lg bg-neutral-100 text-3xl text-neutral-400">∅</span>
+            <span class="mt-1 text-xs font-semibold">None</span>
+            <span class="text-[10px] text-neutral-500">leave photo as is</span>
+          </button>
+        )}
         {Object.values(person.faces).map((fid) => <Candidate key={fid} s={s} faceId={fid} draft={draft} onSelect={select} />)}
       </div>
       {modes.length > 1 && (

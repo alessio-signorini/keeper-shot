@@ -2,6 +2,7 @@ import * as C from '../config';
 import { applyAll, boxOf, fitSimilarity, invert, compose } from '../core/geometry';
 import type { Box, Face, Frame, Mat3, Pick, Pt, Session } from '../types';
 import { Tracker, withMats, type CV } from './cv';
+import { isSwap } from '../core/select';
 
 export const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
 const BROWS = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300];
@@ -131,7 +132,7 @@ export class Compositor {
     const order = new Map(session.people.map((p, i) => [p.id, i]));
     const want = new Map<string, { pick: Pick; plan: Plan }>();
     for (const p of Object.values(picks)) {
-      if (p.mode !== 'base') want.set(p.personId, { pick: p, plan: planPick(session, p, this.scale, W, H) });
+      if (isSwap(p)) want.set(p.personId, { pick: p, plan: planPick(session, p, this.scale, W, H) });
     }
 
     const dirty: Box[] = [];

@@ -59,12 +59,18 @@ export function autoMode(src: Face, base: Face | undefined, feas: Feasibility): 
   return null;
 }
 
-export interface PersonChoice { pick: Pick | null; baseScore: number; best: number }
+export interface PersonChoice { pick: Pick; baseScore: number; best: number }
 
-/** Best pick for one person given a base frame. Returns null pick when the base face is kept. */
+/** True when the pick pastes a face from another frame. */
+export const isSwap = (p: Pick | undefined): boolean => p?.mode === 'eyes' || p?.mode === 'face';
+
+/** Best pick for one person given a base frame. */
 export function choosePick(person: Person, baseFrameId: string, faces: Record<string, Face>): PersonChoice {
   const baseFace = person.faces[baseFrameId] ? faces[person.faces[baseFrameId]] : undefined;
-  const baseScore = baseFace?.score.total ?? 0;
+  // Not detected in the base frame: the person is usually still there (turned away, looking down), so pasting a
+  // face would create a double "ghost" face. Leave the photo untouched; the user can still pick a face manually.
+  if (!baseFace) return { pick: { personId: person.id, faceId: '', mode: 'skip', auto: true }, baseScore: 0, best: 0 };
+  const baseScore = baseFace.score.total;
   let best: { face: Face; mode: SwapMode } | null = null;
   for (const fid of Object.values(person.faces)) {
     if (fid === baseFace?.id) continue;
@@ -80,11 +86,7 @@ export function choosePick(person: Person, baseFrameId: string, faces: Record<st
       best: best.face.score.total,
     };
   }
-  return {
-    pick: baseFace ? { personId: person.id, faceId: baseFace.id, mode: 'base', auto: true } : null,
-    baseScore,
-    best: baseScore,
-  };
+  return { pick: { personId: person.id, faceId: baseFace.id, mode: 'base', auto: true }, baseScore, best: baseScore };
 }
 
 export interface BaseEvaluation { frameId: string; swaps: number; sum: number; inliers: number; picks: Record<string, Pick> }
@@ -94,11 +96,9 @@ export function evaluateBase(frame: Frame, people: Person[], faces: Record<strin
   let swaps = 0, sum = 0;
   for (const p of people) {
     const c = choosePick(p, frame.id, faces);
-    if (c.pick) {
-      picks[p.id] = c.pick;
-      if (c.pick.mode !== 'base') swaps++;
-    }
-    sum += c.pick && c.pick.mode !== 'base' ? c.best : c.baseScore;
+    picks[p.id] = c.pick;
+    if (isSwap(c.pick)) swaps++;
+    sum += isSwap(c.pick) ? c.best : c.baseScore;
   }
   return { frameId: frame.id, swaps, sum, inliers: frame.alignInliers, picks };
 }
@@ -138,6 +138,10 @@ export function rebase(
       fresh[p.id] = { ...old, mode: 'base' };
       continue;
     }
+    if (old.mode === 'skip') {
+      if (!baseFace) fresh[p.id] = old;
+      continue;
+    }
     if (old.mode === 'base') continue;
     const feas = swapFeasibility(faces[old.faceId], baseFace);
     if (feas[old.mode].ok) fresh[p.id] = old;
@@ -145,8 +149,12 @@ export function rebase(
   return fresh;
 }
 
-export function needsAttention(person: Person, pick: Pick | undefined, faces: Record<string, Face>): boolean {
+/**
+ * Amber "check this" faces: a low-scoring final face, or a person seen in at least half the frames who has no face
+ * in the base frame (short-lived clusters are usually grouping fragments and would only add noise).
+ */
+export function needsAttention(person: Person, pick: Pick | undefined, faces: Record<string, Face>, frameCount: number): boolean {
   if (!pick) return true;
-  const total = faces[pick.faceId]?.score.total ?? 0;
-  return total < C.LOW_CONFIDENCE_TOTAL;
+  if (pick.mode === 'skip') return Object.keys(person.faces).length >= frameCount / 2;
+  return (faces[pick.faceId]?.score.total ?? 0) < C.LOW_CONFIDENCE_TOTAL;
 }

@@ -13,9 +13,10 @@ const MOVE_SLOP = 8;
 
 function styleFor(s: Session, personId: string, amber: boolean) {
   const pick = s.picks[personId];
-  if (amber) return { icon: '⚠', border: 'border-amber-400', chip: 'bg-amber-400 text-black' };
+  if (amber) return { icon: '⚠', border: pick?.mode === 'skip' ? 'border-dashed border-amber-400' : 'border-amber-400', chip: 'bg-amber-400 text-black' };
   if (pick?.mode === 'eyes') return { icon: '👁', border: 'border-blue-500', chip: 'bg-blue-500 text-white' };
   if (pick?.mode === 'face') return { icon: '🙂', border: 'border-purple-500', chip: 'bg-purple-500 text-white' };
+  if (pick?.mode === 'skip') return { icon: '∅', border: 'border-dashed border-white/70', chip: 'bg-white/70 text-neutral-600' };
   return { icon: '✓', border: 'border-white/80', chip: 'bg-white/80 text-neutral-700' };
 }
 

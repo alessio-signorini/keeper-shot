@@ -2,10 +2,11 @@ import * as Comlink from 'comlink';
 import exifr from 'exifr';
 import * as C from '../config';
 import { applyAll, boxOf, iou } from '../core/geometry';
+import { alignByFaces, scoreAlignment } from '../core/faceAlign';
 import { groupFaces } from '../core/group';
 import { estimateJpegQuality } from '../core/jpegQuality';
 import { eyesScore, funnyPenalty, normalizeSharpness, scoreFace } from '../core/score';
-import { chooseBase } from '../core/select';
+import { chooseBase, isSwap } from '../core/select';
 import { fthumbKey, frameKey, getBlob, putBlob, saveSession, thumbKey, clearAll } from '../db';
 import type { Face, Frame, Pick, PipelineEvent, Session } from '../types';
 import { Aligner, maskBoxes, toGray, type AlignFeatures } from './align';
@@ -115,6 +116,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   const refIdx = Math.floor(n / 2);
   session.refFrameId = frames[refIdx].id;
   const alignBase = C.PROGRESS.decode + C.PROGRESS.detect;
+  const orb = new Map<number, { fallback: boolean }>();
   try {
     const aligner = await Aligner.create(baseUrl, feats[refIdx]);
     try {
@@ -124,8 +126,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
           frames[i].toRef = r.toRefFull;
           frames[i].alignInliers = r.inliers;
           frames[i].matches = r.matches;
-          if (r.identity) emit({ type: 'warn', message: `Photo ${i + 1}: could not align, using identity` });
-          emit({ type: 'aligned', frame: i + 1, total: n, inliers: r.inliers, fallback: r.fallback });
+          orb.set(i, { fallback: r.fallback || r.identity });
         }
         emit({ type: 'progress', percent: alignBase + (C.PROGRESS.align * (i + 1)) / n });
       }
@@ -133,7 +134,27 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
       aligner.dispose();
     }
   } catch (err) {
-    emit({ type: 'warn', message: `Alignment unavailable (${(err as Error).message}); assuming a tripod` });
+    emit({ type: 'warn', message: `Background alignment unavailable (${(err as Error).message})` });
+  }
+
+  // The background can align differently from the people (parallax, featureless grass): keep whichever transform
+  // lines up more of the group's faces with the reference frame.
+  const refFaces = Object.values(faces).filter((f) => f.frameId === frames[refIdx].id);
+  for (let i = 0; i < n; i++) {
+    if (i === refIdx) continue;
+    const mine = Object.values(faces).filter((f) => f.frameId === frames[i].id);
+    const current = scoreAlignment(frames[i].toRef, mine, refFaces);
+    const byFaces = alignByFaces(mine, refFaces, frames[i].toRef);
+    const better = byFaces && (byFaces.matched > current.matched || (byFaces.matched === current.matched && byFaces.err < current.err));
+    if (better) {
+      frames[i].toRef = byFaces.m;
+      frames[i].alignMethod = 'faces';
+      emit({ type: 'aligned', frame: i + 1, total: n, inliers: frames[i].alignInliers, byFaces: { matched: byFaces.matched, of: mine.length } });
+    } else {
+      frames[i].alignMethod = 'orb';
+      if (!orb.has(i)) emit({ type: 'warn', message: `Photo ${i + 1}: could not align, using identity` });
+      else emit({ type: 'aligned', frame: i + 1, total: n, inliers: frames[i].alignInliers, fallback: orb.get(i)!.fallback });
+    }
   }
   frames[refIdx].alignInliers = Math.max(0, ...frames.map((f) => f.alignInliers)) + 1;
   for (const f of Object.values(faces)) {
@@ -220,7 +241,7 @@ async function preview(session: Session, picks: Record<string, Pick>, longEdge: 
   if (!comp || comp.baseId !== base.id || comp.scale !== scale) {
     comp = new Compositor(base.id, scale, await cached(base, scale), true);
   }
-  const cv = Object.values(picks).some((p) => p.mode !== 'base') ? await loadCV(baseUrl) : null;
+  const cv = Object.values(picks).some(isSwap) ? await loadCV(baseUrl) : null;
   await comp.update(session, picks, { cv, source: (id) => cached(frames.get(id)!, scale) });
   return createImageBitmap(comp.canvas);
 }

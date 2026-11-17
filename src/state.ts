@@ -1,7 +1,7 @@
 import * as Comlink from 'comlink';
 import { signal, computed } from '@preact/signals';
 import * as C from './config';
-import { rebase, needsAttention } from './core/select';
+import { isSwap, needsAttention, rebase } from './core/select';
 import { clearAll, loadSession, saveSession } from './db';
 import { clearStoredUrls } from './ui/useStored';
 import type { Pick, PipelineEvent, Session } from './types';
@@ -46,7 +46,11 @@ function onEvent(e: PipelineEvent) {
     case 'loaded': log(`Loaded ${e.count} photos (${e.megapixels} MP each)`); break;
     case 'detected': log(`Photo ${e.frame}/${e.total}: found ${e.faces} faces`); break;
     case 'thumb': thumbs.value = [...thumbs.value, e]; break;
-    case 'aligned': log(`Aligned photo ${e.frame} — ${e.inliers} matching points${e.fallback ? ' (fallback)' : ''}`); break;
+    case 'aligned':
+      log(e.byFaces
+        ? `Aligned photo ${e.frame} using faces — ${e.byFaces.matched}/${e.byFaces.of} faces line up`
+        : `Aligned photo ${e.frame} — ${e.inliers} matching points${e.fallback ? ' (fallback)' : ''}`);
+      break;
     case 'grouped': log(`Grouped ${e.people} people across ${e.frames} photos`); session.value = e.session; break;
     case 'base': log(`Best base: photo ${e.frame} — needs ${e.swaps} fix${e.swaps === 1 ? '' : 'es'}`); break;
     case 'warn': log(`⚠ ${e.message}`); break;
@@ -136,11 +140,11 @@ export async function setBase(frameId: string) {
 
 export function swapCount(s: Session, frameId: string): number {
   const f = s.frames.find((x) => x.id === frameId)!;
-  return Object.values(rebase(f, s.people, s.faces, s.picks)).filter((p) => p.mode !== 'base').length;
+  return Object.values(rebase(f, s.people, s.faces, s.picks)).filter(isSwap).length;
 }
 
 export function attentionPeople(s: Session): string[] {
-  return s.people.filter((p) => needsAttention(p, s.picks[p.id], s.faces)).map((p) => p.id);
+  return s.people.filter((p) => needsAttention(p, s.picks[p.id], s.faces, s.frames.length)).map((p) => p.id);
 }
 
 export async function plainBase(): Promise<ImageBitmap> {
