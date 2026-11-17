@@ -8,6 +8,8 @@ const APP_NAME = 'KeeperShot';
 
 export default defineConfig({
   base: process.env.GITHUB_REPOSITORY ? '/' + process.env.GITHUB_REPOSITORY.split('/')[1] + '/' : '/',
+  server: { host: '0.0.0.0', port: 5173 },
+  preview: { host: '0.0.0.0', port: 4173 },
   worker: { format: 'es' },
   build: { target: 'es2022', chunkSizeWarningLimit: 12000 },
   test: { include: ['tests/unit/**/*.test.ts'] },
