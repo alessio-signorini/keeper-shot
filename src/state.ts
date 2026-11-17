@@ -148,13 +148,17 @@ export async function plainBase(): Promise<ImageBitmap> {
   return getApi().plain(s, s.baseFrameId, C.PREVIEW_LONG_EDGE);
 }
 
-export async function saveResult() {
+// Desktop share sheets (macOS/Windows) have no "save to disk"; only use sharing where it saves to Photos/Files.
+const isMobile = () =>
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+export async function saveResult(mode: 'auto' | 'download' = 'auto') {
   const s = session.value!;
   saving.value = true;
   try {
     const { blob, name } = await getApi().exportJpeg(s, s.picks);
     const file = new File([blob], name, { type: 'image/jpeg' });
-    if (navigator.canShare?.({ files: [file] })) {
+    if (mode === 'auto' && isMobile() && navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file] });
         return;

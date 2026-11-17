@@ -103,9 +103,22 @@ export function evaluateBase(frame: Frame, people: Person[], faces: Record<strin
   return { frameId: frame.id, swaps, sum, inliers: frame.alignInliers, picks };
 }
 
+/**
+ * Best-face-first: every person's highest-scoring face is the goal. The base is the frame that already holds the
+ * most of those best faces (ties within WIN_EPSILON count as wins), then the highest summed score, then the
+ * best alignment; everyone else is swapped to their best feasible face.
+ */
 export function chooseBase(frames: Frame[], people: Person[], faces: Record<string, Face>): BaseEvaluation {
+  const wins = new Map(frames.map((f) => [f.id, 0]));
+  for (const p of people) {
+    const ids = Object.values(p.faces);
+    const top = Math.max(...ids.map((id) => faces[id].score.total));
+    for (const id of ids) {
+      if (faces[id].score.total >= top - C.WIN_EPSILON) wins.set(faces[id].frameId, (wins.get(faces[id].frameId) ?? 0) + 1);
+    }
+  }
   const evals = frames.map((f) => evaluateBase(f, people, faces));
-  evals.sort((a, b) => a.swaps - b.swaps || b.sum - a.sum || b.inliers - a.inliers);
+  evals.sort((a, b) => wins.get(b.frameId)! - wins.get(a.frameId)! || b.sum - a.sum || b.inliers - a.inliers);
   return evals[0];
 }
 

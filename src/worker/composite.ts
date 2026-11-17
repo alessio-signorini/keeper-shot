@@ -74,6 +74,8 @@ export interface RenderOpts {
   /** called when a source bitmap is no longer needed */
   release?: (frameId: string, bmp: ImageBitmap) => void;
   base: ImageBitmap;
+  /** called once the base bitmap has been copied into the output canvas */
+  releaseBase?: () => void;
   cv: CV;
 }
 
@@ -179,6 +181,7 @@ export class Compositor {
 
 export async function renderComposite(session: Session, picks: Record<string, Pick>, opts: RenderOpts): Promise<OffscreenCanvas> {
   const comp = new Compositor(session.baseFrameId, opts.scale, opts.base, false);
+  opts.releaseBase?.();
   await comp.update(session, picks, opts);
   return comp.canvas;
 }

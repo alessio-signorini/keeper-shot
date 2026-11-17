@@ -1,6 +1,6 @@
 import Panzoom from '@panzoom/panzoom';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { apply, center, invert } from '../core/geometry';
+import { applyAll, boxOf, invert } from '../core/geometry';
 import {
   attentionPeople, comparing, plainBase, previewBitmap, saveResult, saving, session, setBase, startOver,
 } from '../state';
@@ -11,25 +11,26 @@ import { FaceSheet } from './FaceSheet';
 const LONG_PRESS_MS = 350;
 const MOVE_SLOP = 8;
 
-function badgeFor(s: Session, personId: string, amber: boolean) {
+function styleFor(s: Session, personId: string, amber: boolean) {
   const pick = s.picks[personId];
-  if (amber) return { icon: '⚠', cls: 'bg-amber-400 text-black' };
-  if (pick?.mode === 'eyes') return { icon: '👁', cls: 'bg-blue-500 text-white' };
-  if (pick?.mode === 'face') return { icon: '🙂', cls: 'bg-purple-500 text-white' };
-  return { icon: '✓', cls: 'bg-neutral-400 text-white' };
+  if (amber) return { icon: '⚠', border: 'border-amber-400', chip: 'bg-amber-400 text-black' };
+  if (pick?.mode === 'eyes') return { icon: '👁', border: 'border-blue-500', chip: 'bg-blue-500 text-white' };
+  if (pick?.mode === 'face') return { icon: '🙂', border: 'border-purple-500', chip: 'bg-purple-500 text-white' };
+  return { icon: '✓', border: 'border-white/80', chip: 'bg-white/80 text-neutral-700' };
 }
 
-function facePos(s: Session, personId: string): { x: number; y: number } | null {
+/** The person's face rectangle in base-frame coordinates, as percentages of the frame. */
+function faceRect(s: Session, personId: string): { x: number; y: number; w: number; h: number } {
   const p = s.people.find((q) => q.id === personId)!;
   const base = s.frames.find((f) => f.id === s.baseFrameId)!;
   const bf = p.faces[base.id];
-  let c: [number, number];
-  if (bf) c = center(s.faces[bf].box);
-  else {
-    const any = s.faces[Object.values(p.faces)[0]];
-    c = apply(invert(base.toRef), center(any.refBox));
-  }
-  return { x: (c[0] / base.width) * 100, y: (c[1] / base.height) * 100 };
+  const box = bf
+    ? s.faces[bf].box
+    : boxOf(applyAll(invert(base.toRef), [[0, 0], [1, 1]].map(([k, l]) => {
+        const r = s.faces[Object.values(p.faces)[0]].refBox;
+        return [r.x + r.w * k, r.y + r.h * l] as [number, number];
+      })));
+  return { x: (box.x / base.width) * 100, y: (box.y / base.height) * 100, w: (box.w / base.width) * 100, h: (box.h / base.height) * 100 };
 }
 
 export function Review() {
@@ -109,26 +110,29 @@ export function Review() {
         <button class="rounded-lg border border-amber-400 px-3 py-1.5 text-sm disabled:opacity-40" disabled={!amber.size} onClick={next}>
           Next to check ({amber.size})
         </button>
-        <button class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50" disabled={saving.value} onClick={saveResult}>
-          {saving.value ? 'Saving…' : 'Save'}
-        </button>
+        <span class="flex gap-1">
+          <button class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50" disabled={saving.value} onClick={() => void saveResult()}>
+            {saving.value ? 'Saving…' : 'Save'}
+          </button>
+          <button class="rounded-lg border px-2.5 py-1.5 text-sm disabled:opacity-50" disabled={saving.value} title="Download the file" aria-label="Download" onClick={() => void saveResult('download')}>⬇</button>
+        </span>
       </div>
       <div ref={holder} class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-900" style={{ touchAction: 'none' }}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={up}>
         <div ref={stage} class="relative" style={{ width: `${fit.w}px`, height: `${fit.h}px` }}>
           <canvas ref={canvas} class="h-full w-full select-none" />
           {!comparing.value && s.people.map((p) => {
-            const pos = facePos(s, p.id)!;
-            const b = badgeFor(s, p.id, amber.has(p.id));
+            const r = faceRect(s, p.id);
+            const st = styleFor(s, p.id, amber.has(p.id));
             return (
               <button
                 key={p.id}
                 aria-label={`Person ${p.id}`}
-                class={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm shadow ${b.cls}`}
-                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                class={`absolute rounded-md border-2 ${st.border}`}
+                style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}
                 onClick={() => setOpen(p.id)}
               >
-                {b.icon}
+                <span class={`absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full text-[11px] shadow ${st.chip}`}>{st.icon}</span>
               </button>
             );
           })}

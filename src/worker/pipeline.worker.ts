@@ -235,6 +235,7 @@ async function exportFull(session: Session, picks: Record<string, Pick>): Promis
       cv, scale: 1, base: baseBmp,
       source: (id) => scaledBitmap(frames.get(id)!, 1),
       release: (_id, b) => b.close(),
+      releaseBase: () => baseBmp.close(),
     });
     const blob = await encodeJpeg(canvas, base, await frameBlob(base));
     return { blob, name: exportName(base.name) };

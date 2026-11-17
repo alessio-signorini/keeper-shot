@@ -153,7 +153,7 @@ describe('select', () => {
     expect(c.pick?.mode).toBe('eyes');
     expect(c.pick?.faceId).toBe('f1:0');
   });
-  it('picks the base frame needing the fewest swaps', () => {
+  it('picks the base frame holding the most best faces', () => {
     const { frames, faces, people } = setup();
     const b = chooseBase(frames, people, faces);
     expect(b.frameId).toBe('f1');

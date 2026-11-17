@@ -12,6 +12,7 @@ export function Upload() {
     setUrls([]);
     void (async () => {
       for (const f of list) {
+        if (!live) return; // Start was pressed or files changed: stop decoding photos on the page
         try {
           const bmp = await createImageBitmap(f, { resizeWidth: THUMB_PX, resizeQuality: 'low', imageOrientation: 'from-image' });
           const c = document.createElement('canvas');
