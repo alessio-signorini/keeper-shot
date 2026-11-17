@@ -1,7 +1,7 @@
 import * as C from '../config';
 import { applyAll, boxOf, fitSimilarity, invert, compose } from '../core/geometry';
 import type { Box, Face, Frame, Mat3, Pick, Pt, Session } from '../types';
-import { withMats, type CV, type Tracker } from './cv';
+import { Tracker, withMats, type CV } from './cv';
 
 export const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
 const BROWS = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300];
@@ -86,41 +86,101 @@ export function sourceToBase(session: Session, src: Face, baseFace: Face | undef
   return isFinite(fit.rms) ? fit.m : global;
 }
 
-export async function renderComposite(session: Session, picks: Record<string, Pick>, opts: RenderOpts): Promise<OffscreenCanvas> {
-  const { cv, scale: s } = opts;
-  const base = session.frames.find((f) => f.id === session.baseFrameId)!;
-  const W = opts.base.width, H = opts.base.height;
-  const canvas = new OffscreenCanvas(W, H);
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(opts.base, 0, 0);
+interface Plan { Ts: Mat3; mapped: Pt[]; roi: Box }
 
-  // group swaps by source frame so every source is decoded once
-  const swaps = Object.values(picks).filter((p) => p.mode !== 'base');
-  const byFrame = new Map<string, Pick[]>();
-  for (const p of swaps) {
-    const fid = session.faces[p.faceId].frameId;
-    byFrame.set(fid, [...(byFrame.get(fid) ?? []), p]);
-  }
-  const people = new Map(session.people.map((p) => [p.id, p]));
-  for (const [frameId, list] of byFrame) {
-    const bmp = await opts.source(frameId);
-    try {
-      for (const pick of list) {
-        const src = session.faces[pick.faceId];
-        const person = people.get(pick.personId)!;
-        const baseFaceId = person.faces[base.id];
-        const baseFace = baseFaceId ? session.faces[baseFaceId] : undefined;
-        const T = sourceToBase(session, src, baseFace, base);
-        const S: Mat3 = [s, 0, 0, 0, s, 0, 0, 0, 1];
-        const Ts = compose(S, compose(T, invert(S))); // scaled coords → scaled coords
-        const mapped = applyAll(compose(S, T), src.landmarks);
-        await swapOne(cv, ctx, bmp, Ts, mapped, pick.mode as 'face' | 'eyes', W, H);
-      }
-    } finally {
-      opts.release?.(frameId, bmp);
+/** Where a pick lands in the (scaled) base canvas. */
+export function planPick(session: Session, pick: Pick, scale: number, W: number, H: number): Plan {
+  const base = session.frames.find((f) => f.id === session.baseFrameId)!;
+  const src = session.faces[pick.faceId];
+  const person = session.people.find((p) => p.id === pick.personId)!;
+  const baseFaceId = person.faces[base.id];
+  const T = sourceToBase(session, src, baseFaceId ? session.faces[baseFaceId] : undefined, base);
+  const S: Mat3 = [scale, 0, 0, 0, scale, 0, 0, 0, 1];
+  const Ts = compose(S, compose(T, invert(S))); // scaled coords → scaled coords
+  const mapped = applyAll(compose(S, T), src.landmarks);
+  return { Ts, mapped, roi: expand(boxOf(mapped), C.ROI_SCALE, W, H) };
+}
+
+const hits = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const key = (p: Pick) => `${p.faceId}:${p.mode}`;
+
+/**
+ * Holds a composite canvas and applies pick changes incrementally: only the regions touched by changed
+ * picks (plus any overlapping picks) are restored from the base and re-blended.
+ */
+export class Compositor {
+  readonly canvas: OffscreenCanvas;
+  private ctx: OffscreenCanvasRenderingContext2D;
+  private baseCopy: OffscreenCanvas | null = null;
+  private applied = new Map<string, { key: string; roi: Box }>();
+
+  constructor(readonly baseId: string, readonly scale: number, base: ImageBitmap, restorable: boolean) {
+    this.canvas = new OffscreenCanvas(base.width, base.height);
+    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
+    this.ctx.drawImage(base, 0, 0);
+    if (restorable) {
+      this.baseCopy = new OffscreenCanvas(base.width, base.height);
+      this.baseCopy.getContext('2d')!.drawImage(base, 0, 0);
     }
   }
-  return canvas;
+
+  async update(session: Session, picks: Record<string, Pick>, opts: { cv: CV | null; source: FrameSource; release?: (id: string, b: ImageBitmap) => void }) {
+    const W = this.canvas.width, H = this.canvas.height;
+    const order = new Map(session.people.map((p, i) => [p.id, i]));
+    const want = new Map<string, { pick: Pick; plan: Plan }>();
+    for (const p of Object.values(picks)) {
+      if (p.mode !== 'base') want.set(p.personId, { pick: p, plan: planPick(session, p, this.scale, W, H) });
+    }
+
+    const dirty: Box[] = [];
+    const redo = new Set<string>();
+    for (const [id, a] of this.applied) {
+      if (want.get(id) && key(want.get(id)!.pick) === a.key) continue;
+      dirty.push(a.roi);
+    }
+    for (const [id, w] of want) {
+      if (this.applied.get(id)?.key !== key(w.pick)) { dirty.push(w.plan.roi); redo.add(id); }
+    }
+    // pull in unchanged picks that overlap a dirty region, until stable
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const [id, w] of want) {
+        if (redo.has(id) || !dirty.some((d) => hits(d, w.plan.roi))) continue;
+        redo.add(id);
+        dirty.push(w.plan.roi);
+        grew = true;
+      }
+    }
+
+    if (this.baseCopy) {
+      for (const r of dirty) this.ctx.drawImage(this.baseCopy, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    }
+    for (const id of [...this.applied.keys()]) if (!want.has(id) || redo.has(id)) this.applied.delete(id);
+
+    const byFrame = new Map<string, string[]>();
+    for (const id of [...redo].sort((x, y) => order.get(x)! - order.get(y)!)) {
+      const fid = session.faces[want.get(id)!.pick.faceId].frameId;
+      byFrame.set(fid, [...(byFrame.get(fid) ?? []), id]);
+    }
+    for (const [frameId, ids] of byFrame) {
+      const bmp = await opts.source(frameId);
+      try {
+        for (const id of ids) {
+          const { pick, plan } = want.get(id)!;
+          await swapOne(opts.cv!, this.ctx, bmp, plan, pick.mode as 'face' | 'eyes');
+          this.applied.set(id, { key: key(pick), roi: plan.roi });
+        }
+      } finally {
+        opts.release?.(frameId, bmp);
+      }
+    }
+  }
+}
+
+export async function renderComposite(session: Session, picks: Record<string, Pick>, opts: RenderOpts): Promise<OffscreenCanvas> {
+  const comp = new Compositor(session.baseFrameId, opts.scale, opts.base, false);
+  await comp.update(session, picks, opts);
+  return comp.canvas;
 }
 
 function expand(b: Box, k: number, W: number, H: number): Box {
@@ -130,29 +190,45 @@ function expand(b: Box, k: number, W: number, H: number): Box {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-async function swapOne(
-  cv: CV,
-  ctx: OffscreenCanvasRenderingContext2D,
-  srcBmp: ImageBitmap,
-  Ts: Mat3,
-  srcLm: Pt[], // source landmarks in base output coords (for the mask)
-  mode: 'face' | 'eyes',
-  W: number,
-  H: number,
-) {
+const LANCZOS_MARGIN = 4;
+
+/** Lanczos warp of only the source region the ROI needs; alpha marks where the source covers the ROI. */
+function warpPatch(cv: CV, srcBmp: ImageBitmap, Ts: Mat3, roi: Box): ImageData {
+  const inv = invert(Ts);
+  const corners = applyAll(inv, [[roi.x, roi.y], [roi.x + roi.w, roi.y], [roi.x, roi.y + roi.h], [roi.x + roi.w, roi.y + roi.h]]);
+  const bb = boxOf(corners);
+  const sx = Math.max(0, Math.floor(bb.x) - LANCZOS_MARGIN), sy = Math.max(0, Math.floor(bb.y) - LANCZOS_MARGIN);
+  const sw = Math.min(srcBmp.width, Math.ceil(bb.x + bb.w) + LANCZOS_MARGIN) - sx;
+  const sh = Math.min(srcBmp.height, Math.ceil(bb.y + bb.h) + LANCZOS_MARGIN) - sy;
+  if (sw < 2 || sh < 2) return new ImageData(roi.w, roi.h);
+  const crop = new OffscreenCanvas(sw, sh);
+  const cctx = crop.getContext('2d', { willReadFrequently: true })!;
+  cctx.drawImage(srcBmp, sx, sy, sw, sh, 0, 0, sw, sh);
+  const img = cctx.getImageData(0, 0, sw, sh);
+  return withMatsSync((t) => {
+    const src = t.add(cv.matFromImageData(img));
+    const dst = t.add(new cv.Mat());
+    // crop coords → ROI coords
+    const M = t.add(cv.matFromArray(2, 3, cv.CV_64F, [
+      Ts[0], Ts[1], Ts[0] * sx + Ts[1] * sy + Ts[2] - roi.x,
+      Ts[3], Ts[4], Ts[3] * sx + Ts[4] * sy + Ts[5] - roi.y,
+    ]));
+    cv.warpAffine(src, dst, M, new cv.Size(roi.w, roi.h), cv.INTER_LANCZOS4, cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 0));
+    return new ImageData(new Uint8ClampedArray(dst.data), roi.w, roi.h);
+  });
+}
+
+function withMatsSync<T>(fn: (t: Tracker) => T): T {
+  const t = new Tracker();
+  try { return fn(t); } finally { t.dispose(); }
+}
+
+async function swapOne(cv: CV, ctx: OffscreenCanvasRenderingContext2D, srcBmp: ImageBitmap, plan: Plan, mode: 'face' | 'eyes') {
+  const { Ts, mapped: srcLm, roi } = plan;
   const polys = maskPolygons(srcLm, mode);
-  const faceBox = boxOf(srcLm);
-  const roi = expand(faceBox, C.ROI_SCALE, W, H);
   if (roi.w < 8 || roi.h < 8) return;
 
-  // warp: draw the (already scaled) source bitmap into the ROI with the source→base transform
-  const patch = new OffscreenCanvas(roi.w, roi.h);
-  const pctx = patch.getContext('2d', { willReadFrequently: true })!;
-  pctx.imageSmoothingQuality = 'high';
-  pctx.setTransform(Ts[0], Ts[3], Ts[1], Ts[4], Ts[2] - roi.x, Ts[5] - roi.y);
-  pctx.drawImage(srcBmp, 0, 0);
-  pctx.setTransform(1, 0, 0, 1, 0, 0);
-  const patchData = pctx.getImageData(0, 0, roi.w, roi.h);
+  const patchData = warpPatch(cv, srcBmp, Ts, roi);
 
   // hard mask polygons (white on black), later feathered with a Gaussian blur
   const mc = new OffscreenCanvas(roi.w, roi.h);

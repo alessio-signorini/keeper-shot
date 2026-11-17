@@ -2,16 +2,16 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { get } from 'idb-keyval';
 import { loadSession } from '../db';
 import { maskPolygons } from '../worker/composite';
-import { center } from '../core/geometry';
+import { apply, center, invert } from '../core/geometry';
 import type { Session } from '../types';
 
-type Layer = 'landmarks' | 'boxes' | 'masks';
-const LAYERS: Layer[] = ['landmarks', 'boxes', 'masks'];
+type Layer = 'landmarks' | 'boxes' | 'masks' | 'matches';
+const LAYERS: Layer[] = ['landmarks', 'boxes', 'masks', 'matches'];
 
 export function Debug() {
   const [s, setS] = useState<Session | null>(null);
   const [frameId, setFrameId] = useState('f0');
-  const [on, setOn] = useState<Record<Layer, boolean>>({ landmarks: true, boxes: true, masks: false });
+  const [on, setOn] = useState<Record<Layer, boolean>>({ landmarks: true, boxes: true, masks: false, matches: false });
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => { void loadSession().then((x) => x && setS(x)); }, []);
@@ -33,6 +33,18 @@ export function Debug() {
       bmp.close();
       const personOf = (faceId: string) => s.people.find((p) => Object.values(p.faces).includes(faceId))?.id ?? '?';
       const lw = Math.max(2, c.width / 800);
+      if (on.matches && frame.matches?.length) {
+        // each inlier: point in this frame → where the reference frame's point lands in this frame
+        const fromRef = invert(frame.toRef);
+        ctx.lineWidth = lw;
+        for (const [x, y, rx, ry] of frame.matches) {
+          const [ex, ey] = apply(fromRef, [rx, ry]);
+          ctx.strokeStyle = '#22c55e';
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.fillStyle = '#eab308';
+          ctx.beginPath(); ctx.arc(x, y, lw * 1.5, 0, 7); ctx.fill();
+        }
+      }
       for (const face of Object.values(s.faces).filter((f) => f.frameId === frameId)) {
         if (on.landmarks) {
           ctx.fillStyle = '#22d3ee';

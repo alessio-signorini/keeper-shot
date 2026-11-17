@@ -32,6 +32,7 @@ export const ALIGN_MASK_TALL = 3;
 export const ALIGN_PERSPECTIVE_MAX = 0.002;
 export const ALIGN_SCALE_MIN = 0.8;
 export const ALIGN_SCALE_MAX = 1.25;
+export const DEBUG_MAX_MATCHES = 150;
 
 // Group
 export const GROUP_MIN_IOU = 0.3;

@@ -9,7 +9,7 @@ import { chooseBase } from '../core/select';
 import { fthumbKey, frameKey, getBlob, putBlob, saveSession, thumbKey, clearAll } from '../db';
 import type { Face, Frame, Pick, PipelineEvent, Session } from '../types';
 import { Aligner, maskBoxes, toGray, type AlignFeatures } from './align';
-import { renderComposite } from './composite';
+import { Compositor, renderComposite } from './composite';
 import { installImportScripts, loadCV } from './cv';
 import { decodeBlob, fitSize, scaledCanvas } from './decode';
 import { detectFaces, faceThumb, initDetector, sharpnessOf } from './detect';
@@ -47,6 +47,7 @@ async function readMeta(file: { name: string; blob: Blob }, order: number): Prom
 const blankScore = { eyes: 0, gaze: 0, pose: 0, smile: 0, sharp: 0, total: 0 };
 
 async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<Session> {
+  comp = null;
   await clearAll();
   await initDetector(baseUrl);
   const metas = await Promise.all(files.map((f, i) => readMeta(f, i)));
@@ -114,6 +115,7 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
           const r = await aligner.align(feats[i], frames[i].width);
           frames[i].toRef = r.toRefFull;
           frames[i].alignInliers = r.inliers;
+          frames[i].matches = r.matches;
           if (r.identity) emit({ type: 'warn', message: `Photo ${i + 1}: could not align, using identity` });
           emit({ type: 'aligned', frame: i + 1, total: n, inliers: r.inliers, fallback: r.fallback });
         }
@@ -200,18 +202,18 @@ async function cached(frame: Frame, scale: number): Promise<ImageBitmap> {
 
 const previewScale = (f: Frame, longEdge: number) => Math.min(1, longEdge / Math.max(f.width, f.height));
 
+let comp: Compositor | null = null;
+
 async function preview(session: Session, picks: Record<string, Pick>, longEdge: number): Promise<ImageBitmap> {
   const frames = new Map(session.frames.map((f) => [f.id, f]));
   const base = frames.get(session.baseFrameId)!;
   const scale = previewScale(base, longEdge);
-  const swaps = Object.values(picks).some((p) => p.mode !== 'base');
-  const baseBmp = await cached(base, scale);
-  if (!swaps) return createImageBitmap(baseBmp);
-  const cv = await loadCV(baseUrl);
-  const canvas = await renderComposite(session, picks, {
-    cv, scale, base: baseBmp, source: (id) => cached(frames.get(id)!, scale),
-  });
-  return createImageBitmap(canvas);
+  if (!comp || comp.baseId !== base.id || comp.scale !== scale) {
+    comp = new Compositor(base.id, scale, await cached(base, scale), true);
+  }
+  const cv = Object.values(picks).some((p) => p.mode !== 'base') ? await loadCV(baseUrl) : null;
+  await comp.update(session, picks, { cv, source: (id) => cached(frames.get(id)!, scale) });
+  return createImageBitmap(comp.canvas);
 }
 
 async function exportFull(session: Session, picks: Record<string, Pick>): Promise<{ blob: Blob; name: string }> {

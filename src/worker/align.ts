@@ -10,7 +10,19 @@ export interface AlignFeatures {
   masks: Box[]; // face boxes to ignore, in align coords
 }
 
-export interface AlignResult { toRefFull: Mat3; inliers: number; fallback: boolean; identity: boolean }
+export interface AlignResult {
+  toRefFull: Mat3;
+  inliers: number;
+  fallback: boolean;
+  identity: boolean;
+  matches: [number, number, number, number][];
+}
+
+function sampleMatches(pairs: { a: Pt; b: Pt }[], inlier: (i: number) => boolean, s: number): [number, number, number, number][] {
+  const idx = pairs.map((_, i) => i).filter(inlier);
+  const step = Math.max(1, Math.ceil(idx.length / C.DEBUG_MAX_MATCHES));
+  return idx.filter((_, k) => k % step === 0).map((i) => [pairs[i].a[0] / s, pairs[i].a[1] / s, pairs[i].b[0] / s, pairs[i].b[1] / s]);
+}
 
 export function maskBoxes(boxes: Box[], scale: number): Box[] {
   return boxes.map((b) => {
@@ -110,18 +122,21 @@ export class Aligner {
             inliers >= C.ALIGN_MIN_INLIERS &&
             Math.abs(hm[6]) < C.ALIGN_PERSPECTIVE_MAX && Math.abs(hm[7]) < C.ALIGN_PERSPECTIVE_MAX &&
             sc >= C.ALIGN_SCALE_MIN && sc <= C.ALIGN_SCALE_MAX;
-          if (ok) return { toRefFull: full(hm), inliers, fallback: false, identity: false };
+          if (ok) return { toRefFull: full(hm), inliers, fallback: false, identity: false, matches: sampleMatches(pairs, (i) => !!inl.data[i], s) };
         }
         const sim = ransacSimilarity(pairs.map((p) => p.a), pairs.map((p) => p.b));
-        if (sim && sim.inliers >= C.ALIGN_MIN_INLIERS) return { toRefFull: full(sim.m), inliers: sim.inliers, fallback: true, identity: false };
+        if (sim && sim.inliers >= C.ALIGN_MIN_INLIERS) {
+          const set = new Set(sim.set);
+          return { toRefFull: full(sim.m), inliers: sim.inliers, fallback: true, identity: false, matches: sampleMatches(pairs, (i) => set.has(i), s) };
+        }
       }
-      return { toRefFull: [...IDENTITY], inliers: 0, fallback: true, identity: true };
+      return { toRefFull: [...IDENTITY], inliers: 0, fallback: true, identity: true, matches: [] };
     });
   }
 }
 
 /** RANSAC similarity fit (fallback when the homography is implausible). */
-export function ransacSimilarity(a: Pt[], b: Pt[], iters = 500): { m: Mat3; inliers: number } | null {
+export function ransacSimilarity(a: Pt[], b: Pt[], iters = 500): { m: Mat3; inliers: number; set: number[] } | null {
   const n = a.length;
   if (n < 2) return null;
   let best: { m: Mat3; set: number[] } | null = null;
@@ -144,5 +159,5 @@ export function ransacSimilarity(a: Pt[], b: Pt[], iters = 500): { m: Mat3; inli
   const refit = fitSimilarity(best.set.map((k) => a[k]), best.set.map((k) => b[k]));
   const sc = Math.hypot(refit.m[0], refit.m[3]);
   if (sc < C.ALIGN_SCALE_MIN || sc > C.ALIGN_SCALE_MAX) return null;
-  return { m: refit.m, inliers: best.set.length };
+  return { m: refit.m, inliers: best.set.length, set: best.set };
 }

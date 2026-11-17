@@ -10,6 +10,8 @@ export interface Frame {
   height: number;
   toRef: Mat3;
   alignInliers: number;
+  /** sampled inlier matches [x, y, refX, refY] in full-res coords of this frame / the reference frame */
+  matches?: [number, number, number, number][];
   exif: Record<string, unknown>;
   jpegQuality?: number;
 }
