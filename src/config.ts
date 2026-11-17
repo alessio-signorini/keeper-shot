@@ -57,7 +57,7 @@ export const EYES_MAX_DPOSE = 6;
 export const EYES_MAX_RESIDUAL = 0.04;
 export const FACE_MAX_DPOSE = 15;
 export const FACE_MAX_RESIDUAL = 0.08;
-export const SWAP_GAIN_MIN = 0.04; // swap whenever a feasible face scores clearly better
+export const SWAP_GAIN_MIN = 0.02; // swap whenever a feasible face scores clearly better
 export const WIN_EPSILON = 0.02; // faces this close to a person's best count as "best" for base choice
 export const SMILE_SIMILAR = 0.1;
 
