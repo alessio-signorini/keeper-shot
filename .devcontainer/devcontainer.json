@@ -1,12 +1,12 @@
 {
   "name": "keepershot",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22-bookworm",
   "forwardPorts": [5173, 4173],
   "portsAttributes": {
     "5173": { "label": "vite dev" },
     "4173": { "label": "vite preview" }
   },
-  "postCreateCommand": "npm ci --include=dev && npx --no-install playwright install --with-deps chromium",
+  "postCreateCommand": "npm ci --no-audit --no-fund && npx --no-install playwright install --with-deps --only-shell chromium",
   "customizations": {
     "vscode": {
       "extensions": [
