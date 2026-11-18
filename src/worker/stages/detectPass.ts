@@ -36,14 +36,16 @@ export async function detectPass(
 ): Promise<DetectPassResult> {
   emit({ type: 'status', message: 'Loading face detector…' });
   await initDetector(baseUrl);
-  emit({ type: 'status', message: 'Face detector ready, decoding photo 1…' });
+  emit({ type: 'status', message: 'Face detector ready' });
   const faces: Record<string, Face> = {};
   const alignFeatures: AlignFeatures[] = [];
   const n = frames.length;
   let prevWorkBoxes: Box[] = [];
   for (let i = 0; i < n; i++) {
     const frame = frames[i];
+    if (i === 0) emit({ type: 'status', message: 'Saving photo 1…' });
     await putBlob(frame.blobKey, infos[i].file.blob);
+    if (i === 0) emit({ type: 'status', message: 'Decoding photo 1…' });
     const bmp = await decodeBlob(infos[i].file.blob, baseUrl);
     try {
       frame.width = bmp.width;
