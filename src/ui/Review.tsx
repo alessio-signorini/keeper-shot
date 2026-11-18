@@ -63,9 +63,16 @@ export function Review() {
 
   useEffect(() => {
     const el = stage.current!;
-    // zoom only: the photo itself never drags; wheel/pinch zoom toward the pointer and stay inside the frame
-    const pz = Panzoom(el, { maxScale: 8, minScale: 1, disablePan: true, contain: 'outside' });
+    // pan is clamped so the photo always covers its frame: at 1x nothing can move
+    const pz = Panzoom(el, { maxScale: 8, minScale: 1, cursor: 'grab' });
     pzRef.current = pz;
+    const clamp = () => {
+      const scale = pz.getScale(), { x, y } = pz.getPan();
+      const mx = (el.offsetWidth * (scale - 1)) / (2 * scale), my = (el.offsetHeight * (scale - 1)) / (2 * scale);
+      const px = Math.max(-mx, Math.min(mx, x)), py = Math.max(-my, Math.min(my, y));
+      if (Math.abs(px - x) > 0.5 || Math.abs(py - y) > 0.5) pz.pan(px, py, { force: true, animate: false });
+    };
+    el.addEventListener('panzoomchange', clamp);
     const parent = holder.current!;
     parent.addEventListener('wheel', pz.zoomWithWheel);
     return () => { parent.removeEventListener('wheel', pz.zoomWithWheel); pz.destroy(); pzRef.current = null; };
@@ -125,7 +132,7 @@ export function Review() {
           <button class="rounded-lg border px-2.5 py-1.5 text-sm disabled:opacity-50" disabled={saving.value} title="Download the file" aria-label="Download" onClick={() => void saveResult('download')}>⬇</button>
         </span>
       </div>
-      <div ref={holder} class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-neutral-900" style={{ touchAction: 'none' }}
+      <div ref={holder} class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden" style={{ touchAction: 'none' }}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={up}>
         <div ref={stage} class="relative" style={{ width: `${fit.w}px`, height: `${fit.h}px` }}>
           <canvas ref={canvas} class="h-full w-full select-none" />
