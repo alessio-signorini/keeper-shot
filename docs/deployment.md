@@ -8,7 +8,7 @@ In the repository, set **Settings → Pages → Source = GitHub Actions**.
 
 ## Publishing
 
-Pushes to `main` build and publish via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). CI checks (formatting, typecheck, tests) run via [`ci.yml`](../.github/workflows/ci.yml).
+Pushes to `main` or `master` build and publish via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). CI checks (formatting, typecheck, tests) run via [`ci.yml`](../.github/workflows/ci.yml).
 
 The site is served from the root of the custom domain `keepershot.signorini.dev` (`public/CNAME`, Vite `base: '/'`). DNS: a `CNAME` record for `keepershot` pointing to `alessio-signorini.github.io`. Set the custom domain and enable _Enforce HTTPS_ under Settings → Pages.
 
