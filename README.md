@@ -1,6 +1,6 @@
 # 📸 KeeperShot
 
-![screenshot](docs/images/trip-desktop.jpg)
+![screenshot](docs/screenshot.png)
 
 Turn a burst of near-identical group photos into one where everyone looks great. Private by design: everything runs in your browser. No uploads, no backend.
 
