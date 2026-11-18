@@ -13,6 +13,16 @@ export const faceThumbKey = (faceId: string) => `thumb:${faceId}`;
 
 export const saveSession = (s: Session) => set(SESSION_KEY, s);
 export const loadSession = () => get<Session>(SESSION_KEY);
-export const putBlob = (key: string, b: Blob) => set(key, b);
-export const getBlob = (key: string) => get<Blob>(key);
+/** Bytes + type rather than a Blob: some WebKit browsers (Vivaldi on iOS) hang when a Blob is written to IndexedDB. */
+interface StoredBlob {
+  type: string;
+  bytes: ArrayBuffer;
+}
+export const putBlob = async (key: string, b: Blob) =>
+  set(key, { type: b.type, bytes: await b.arrayBuffer() } satisfies StoredBlob);
+export const getBlob = async (key: string): Promise<Blob | undefined> => {
+  const v = await get<StoredBlob | Blob>(key);
+  if (!v) return undefined;
+  return v instanceof Blob ? v : new Blob([v.bytes], { type: v.type });
+};
 export const clearAll = () => clear();
