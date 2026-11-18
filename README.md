@@ -1,5 +1,7 @@
 # 📸 KeeperShot
 
+![screenshot](docs/images/trip-desktop.jpg)
+
 Turn a burst of near-identical group photos into one where everyone looks great. Private by design: everything runs in your browser. No uploads, no backend.
 
 ![PWA](https://img.shields.io/badge/PWA-installable-5a0fc8)
