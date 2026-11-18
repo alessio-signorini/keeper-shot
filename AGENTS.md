@@ -46,7 +46,7 @@ Dependency direction: `ui → app → (worker via Comlink) → core`. `core` imp
 - Look up frames, people and faces through `src/core/session.ts` (`frameById`, `baseFrame`, `personById`, `faceInFrame`, `facesOfFrame`, `personOfFace`), and storage keys through `src/storage.ts`.
 - Name coordinate spaces in variables when it isn't obvious: full-res frame px, `work*` (WORK_LONG_EDGE), `align*` (ALIGN_LONG_EDGE), `ref*` (reference frame), output/preview px (`scale`).
 - `Session` and everything in it is persisted for Resume. Renaming or reshaping a persisted field breaks saved sessions unless loading handles the old shape.
-- Memory: never hold more than one full-resolution bitmap at a time in the analysis passes; `close()` bitmaps and free every OpenCV Mat (`withMats`/`withMatsSync`).
+- Memory: never hold more than one full-resolution bitmap at a time in the analysis passes; `close()` bitmaps and free every OpenCV Mat (`withMats`/`withMatsSync`), releasing large ones as soon as they're dead (`Tracker.release`): the WASM heap never shrinks, so its peak is what counts.
 - No backend, analytics or runtime network calls besides the app's own static assets.
 - When behaviour changes, update the matching section of `docs/decisions.md` (replace outdated entries; don't append contradictions).
 - Prettier formatting, one statement per line.

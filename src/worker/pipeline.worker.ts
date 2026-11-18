@@ -65,22 +65,45 @@ const serial = <T>(fn: () => Promise<T>): Promise<T> => {
   return p;
 };
 
+/**
+ * The analysed session (frames, faces, people) the render calls work on. Sent once per worker by the main thread so
+ * that pick and base changes only send `baseFrameId` + picks instead of every face's landmarks.
+ */
+let loaded: Session | null = null;
+
+function loadedSession(): Session {
+  if (!loaded) throw new Error('No session loaded in the pipeline worker');
+  return loaded;
+}
+
+const withChoice = (baseFrameId: string, picks: PicksByPerson): Session => ({ ...loadedSession(), baseFrameId, picks });
+
 const api = {
   init(url: string) {
     baseUrl = url;
   },
-  analyzeBurst: (files: InputFile[], emit: Emit) => analyzeBurst(files, emit),
-  renderPreview: (session: Session, picks: PicksByPerson, longEdge: number) =>
+  analyzeBurst: async (files: InputFile[], emit: Emit) => {
+    loaded = null;
+    loaded = await analyzeBurst(files, emit);
+    return loaded;
+  },
+  /** Replaces the analysed session the render calls use; its baseFrameId and picks are ignored. */
+  setSession(session: Session) {
+    loaded = session;
+    renderer.reset();
+  },
+  renderPreview: (baseFrameId: string, picks: PicksByPerson, longEdge: number) =>
     serial(async () => {
-      const b = await renderer.renderPreview(session, picks, longEdge);
+      const b = await renderer.renderPreview(withChoice(baseFrameId, picks), picks, longEdge);
       return Comlink.transfer(b, [b]);
     }),
-  renderFrame: (session: Session, frameId: string, longEdge: number) =>
+  renderFrame: (frameId: string, longEdge: number) =>
     serial(async () => {
-      const b = await renderer.renderFrame(session, frameId, longEdge);
+      const b = await renderer.renderFrame(loadedSession(), frameId, longEdge);
       return Comlink.transfer(b, [b]);
     }),
-  exportJpeg: (session: Session, picks: PicksByPerson) => serial(() => renderer.exportJpeg(session, picks)),
+  exportJpeg: (baseFrameId: string, picks: PicksByPerson) =>
+    serial(() => renderer.exportJpeg(withChoice(baseFrameId, picks), picks)),
 };
 
 export type PipelineApi = typeof api;

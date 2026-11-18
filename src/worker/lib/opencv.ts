@@ -45,6 +45,14 @@ export class Tracker {
     this.items.push(m);
     return m;
   }
+  /** Free tracked Mats now (WASM heap peaks are what matter: it never shrinks). */
+  release(...mats: { delete: () => void }[]) {
+    for (const m of mats) {
+      const i = this.items.lastIndexOf(m);
+      if (i >= 0) this.items.splice(i, 1);
+      m.delete();
+    }
+  }
   dispose() {
     for (const m of this.items.reverse()) {
       try {

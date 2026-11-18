@@ -11,7 +11,8 @@ ui/Upload ──startAnalysis()──▶ app/actions ─────────
 ui/Progress ◀── signals ◀── onPipelineEvent ◀─ emit ──   stages/ingest → stages/detectPass → stages/alignPass
                                                         → core/faceAlignment.misalignedFrames → core/analyze
                  (worker terminated after analysis: WASM heaps never shrink)
-ui/Review ──refreshPreview()/setPick()/setBase()─────▶ renderPreview / renderFrame / exportJpeg (fresh worker)
+ui/Review ──refreshPreview()/setPick()/setBase()─────▶ setSession (once) + renderPreview / renderFrame / exportJpeg
+                                                         (fresh worker; calls send only baseFrameId + picks)
                                                          render/renderer → render/compositor → render/blend
 ```
 
@@ -88,8 +89,9 @@ Progress weights are `PROGRESS` in config.
 
 ## Rendering
 
+- **Session in the worker**: `setSession` loads the analysed session once per worker (`app/workerClient.rendererFor` sends it when `session.faces` changes identity). Render calls pass only `baseFrameId` and picks.
 - **Preview**: `Renderer.renderPreview` keeps one `Compositor` per (base frame, scale). On pick changes, `core/placement.planIncrementalUpdate` decides which ROIs to restore from the base copy and which swaps to redo (changed ones plus anything overlapping, transitively). Source frames come from a small LRU `FrameCache`, decoded straight to preview size.
-- **Swap** (`compositor.applySwap`): warp only the needed source region (Lanczos), rasterise the mask and skin polygons, then `blend.blendPatch`: feather the mask, Lab mean/std colour transfer (skin interior for face swaps, edge ring otherwise), Laplacian-pyramid blend.
+- **Swap** (`compositor.applySwap`): warp only the needed source region (Lanczos), rasterise the mask and skin polygons, then `blend.blendPatch`: feather the mask, Lab mean/std colour transfer (skin interior for face swaps, edge ring otherwise), Laplacian-pyramid blend. Mats are released as soon as they are dead and the pyramid is processed level by level: the WASM heap keeps its high-water mark, which scales with the ROI area.
 - **Export**: frees preview caches, renders at full resolution with a one-shot compositor, encodes JPEG at the base frame's estimated quality and copies allow-listed EXIF (`lib/jpegEncode`).
 
 ## Testing

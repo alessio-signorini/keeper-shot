@@ -18,7 +18,7 @@ import {
   session,
 } from './store';
 import { clearStoredUrls } from './useStoredUrl';
-import { pipeline, recycleWorker } from './workerClient';
+import { pipeline, recycleWorker, rendererFor } from './workerClient';
 
 function onPipelineEvent(e: PipelineEvent) {
   const line = describeEvent(e);
@@ -89,7 +89,7 @@ export async function refreshPreview(draftPicks?: PicksByPerson) {
   const s = session.value;
   if (!s) return;
   const seq = ++previewSeq;
-  const bmp = await pipeline().renderPreview(s, draftPicks ?? s.picks, C.PREVIEW_LONG_EDGE);
+  const bmp = await (await rendererFor(s)).renderPreview(s.baseFrameId, draftPicks ?? s.picks, C.PREVIEW_LONG_EDGE);
   if (seq !== previewSeq) return bmp.close();
   previewBitmap.value?.close();
   previewBitmap.value = bmp;
@@ -113,14 +113,14 @@ export async function setBase(frameId: string) {
 /** The untouched base frame at preview size (before/after). */
 export async function renderOriginalBase(): Promise<ImageBitmap> {
   const s = session.value!;
-  return pipeline().renderFrame(s, s.baseFrameId, C.PREVIEW_LONG_EDGE);
+  return (await rendererFor(s)).renderFrame(s.baseFrameId, C.PREVIEW_LONG_EDGE);
 }
 
 export async function saveComposite(mode: 'auto' | 'download' = 'auto') {
   const s = session.value!;
   saving.value = true;
   try {
-    const { blob, name } = await pipeline().exportJpeg(s, s.picks);
+    const { blob, name } = await (await rendererFor(s)).exportJpeg(s.baseFrameId, s.picks);
     await deliverFile(blob, name, mode);
   } finally {
     saving.value = false;

@@ -61,6 +61,8 @@ The design choices currently in effect, grouped by topic. When behaviour changes
 ## Memory
 
 - The pipeline worker is terminated after analysis (WASM heaps never shrink); previews decode straight to the target size with `createImageBitmap` resize and are kept in a small LRU cache; export frees the preview caches first. Needed because 20 MP bursts crashed the renderer in ~2 GB containers.
+- Blending releases each OpenCV Mat as soon as it is dead (`Tracker.release`), and the Laplacian pyramid is built, blended and freed level by level, so only about one level's images are alive at a time. Same operations, pixel-identical output. Before this, about 19 ROI-sized float images were alive at once; on a 13 MP close-up (1.9 MP swap region) the export peak was 1016 MB, now 666 MB (renderer RSS).
+- The render worker keeps the analysed session (`setSession`, sent once per worker; `app/workerClient.rendererFor` re-sends it only when `session.faces` changes identity, i.e. after a new analysis or Resume). Preview, before/after and export calls send only `baseFrameId` + picks, instead of cloning every face's landmarks on each tap. Review RSS dropped 14–137 MB across the fixtures.
 
 ## Review UI
 
