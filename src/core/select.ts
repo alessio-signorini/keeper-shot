@@ -104,9 +104,9 @@ export function evaluateBase(frame: Frame, people: Person[], faces: Record<strin
 }
 
 /**
- * Best-face-first: every person's highest-scoring face is the goal. The base is the frame that already holds the
- * most of those best faces (ties within WIN_EPSILON count as wins), then the highest summed score, then the
- * best alignment; everyone else is swapped to their best feasible face.
+ * Best-result-first: the base is the frame whose result (each person at their best feasible face) has the highest
+ * summed score; near-ties prefer fewer swaps, then frames already holding more best faces (WIN_EPSILON), then the
+ * best alignment.
  */
 export function chooseBase(frames: Frame[], people: Person[], faces: Record<string, Face>): BaseEvaluation {
   const wins = new Map(frames.map((f) => [f.id, 0]));
@@ -118,8 +118,13 @@ export function chooseBase(frames: Frame[], people: Person[], faces: Record<stri
     }
   }
   const evals = frames.map((f) => evaluateBase(f, people, faces));
-  evals.sort((a, b) => wins.get(b.frameId)! - wins.get(a.frameId)! || b.sum - a.sum || b.inliers - a.inliers);
-  return evals[0];
+  // The highest achievable summed score wins; sums within a small tolerance count as equal and fall back to fewer
+  // swaps (less editing), more best faces already in place, then better alignment.
+  const tol = C.BASE_SUM_TOL * people.length;
+  const top = Math.max(...evals.map((e) => e.sum));
+  const close = evals.filter((e) => e.sum >= top - tol);
+  close.sort((a, b) => a.swaps - b.swaps || wins.get(b.frameId)! - wins.get(a.frameId)! || b.sum - a.sum || b.inliers - a.inliers);
+  return close[0];
 }
 
 /** Re-pick for a new base frame, keeping manual picks that are still feasible. */
