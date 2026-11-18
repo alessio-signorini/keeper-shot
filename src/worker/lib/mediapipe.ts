@@ -41,6 +41,9 @@ export async function initDetector(baseUrl: string): Promise<void> {
   if (landmarker) return;
   const fileset = await FilesetResolver.forVisionTasks(new URL('mediapipe-wasm', baseUrl).href);
   landmarker = await FaceLandmarker.createFromOptions(fileset, {
+    // MediaPipe only trusts OffscreenCanvas on Safari UAs with "Version/17+" (Vivaldi/Chrome/Firefox on iOS lack it)
+    // and otherwise calls document.createElement, which doesn't exist in a worker.
+    canvas: new OffscreenCanvas(1, 1),
     baseOptions: { modelAssetPath: new URL('models/face_landmarker.task', baseUrl).href, delegate: C.DETECT_DELEGATE },
     runningMode: 'IMAGE',
     numFaces: C.MAX_FACES,
