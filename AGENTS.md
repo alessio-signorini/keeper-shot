@@ -4,13 +4,12 @@ Start here. KeeperShot is a client-only PWA (Preact + Vite + TypeScript) that me
 
 ## Read next
 
-| Need                                               | Read                                                                                     |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| How the pipeline, data model and modules fit       | [docs/architecture.md](docs/architecture.md)                                             |
-| Why something behaves the way it does              | [docs/decisions.md](docs/decisions.md)                                                   |
-| Tunable thresholds                                 | [src/config.ts](src/config.ts)                                                           |
-| Ideas queued for a future phase (names, perf)      | [docs/future-work.md](docs/future-work.md)                                               |
-| The original build spec (historical, partly stale) | [docs/history/original-spec.md](docs/history/original-spec.md) — don't implement from it |
+| Need                                           | Read                                         |
+| ---------------------------------------------- | -------------------------------------------- |
+| How the pipeline, data model and modules fit   | [docs/architecture.md](docs/architecture.md) |
+| Full build spec + why things behave as they do | [docs/BUILD.md](docs/BUILD.md)               |
+| Tunable thresholds                             | [src/config.ts](src/config.ts)               |
+| Ideas queued for a future phase (names, perf)  | [docs/future-work.md](docs/future-work.md)   |
 
 ## Commands
 
@@ -22,7 +21,7 @@ npm run build         # typecheck + production build
 npm run e2e           # playwright: smoke tests + full pipeline on tests/fixtures/*/ (slow, ~2 min, needs ~1 GB free RAM)
 ```
 
-Run `format`, `typecheck` and `test` before finishing any change. Run `e2e` when touching the worker, the pipeline or UI flows. Full-pipeline e2e tests assert `expected.json` people counts, several of which are known to differ today (see "Fixture status" in docs/decisions.md); compare against the previous run rather than expecting green.
+Run `format`, `typecheck` and `test` before finishing any change. Run `e2e` when touching the worker, the pipeline or UI flows. Full-pipeline e2e tests assert `expected.json` people counts, several of which are known to differ today (see "Tests" in docs/BUILD.md); compare against the previous run rather than expecting green.
 
 ## Where code goes
 
@@ -48,7 +47,7 @@ Dependency direction: `ui → app → (worker via Comlink) → core`. `core` imp
 - `Session` and everything in it is persisted for Resume. Renaming or reshaping a persisted field breaks saved sessions unless loading handles the old shape.
 - Memory: never hold more than one full-resolution bitmap at a time in the analysis passes; `close()` bitmaps and free every OpenCV Mat (`withMats`/`withMatsSync`), releasing large ones as soon as they're dead (`Tracker.release`): the WASM heap never shrinks, so its peak is what counts.
 - No backend, analytics or runtime network calls besides the app's own static assets.
-- When behaviour changes, update the matching section of `docs/decisions.md` (replace outdated entries; don't append contradictions).
+- When behaviour changes, update the matching section of `docs/BUILD.md` (replace outdated entries; don't append contradictions).
 - Prettier formatting, one statement per line.
 
 ## Checking a refactor

@@ -1,6 +1,6 @@
 # Architecture
 
-How KeeperShot is put together. For why specific choices were made, see [decisions.md](decisions.md); for working rules, [AGENTS.md](../AGENTS.md).
+How KeeperShot is put together. For why specific choices were made, see [BUILD.md](BUILD.md); for working rules, [AGENTS.md](../AGENTS.md).
 
 ## Runtime overview
 

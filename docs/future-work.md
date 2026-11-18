@@ -70,4 +70,4 @@ Rough priority order, starting with the likely biggest wins. Measure before and 
 - The big-family export (9 × 20 MP) peaks around 790 MB of renderer RSS. It completes in a ~4 GB container with VS Code running, but only just; it crashed there before the blend and session-in-worker changes.
 - `Renderer.exportJpeg` closes the base bitmap twice (`releaseBase` and `finally`), which is harmless. Only one of them is needed.
 - `isHeic` (`worker/lib/decode.ts`) treats an empty MIME type as HEIC, so any undecodable file without a type goes to libheif.
-- docs/decisions.md says source frames are decoded whole because crop + orientation is inconsistent across browsers. `createImageBitmap` with `resizeWidth` on a cropped region could reduce export memory if that's re-tested.
+- docs/BUILD.md says source frames are decoded whole because crop + orientation is inconsistent across browsers. `createImageBitmap` with `resizeWidth` on a cropped region could reduce export memory if that's re-tested.
