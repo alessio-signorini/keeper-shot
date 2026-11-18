@@ -39,7 +39,7 @@ Platform decisions:
 
 - GitHub Pages can't set COOP/COEP, so `SharedArrayBuffer` is unavailable: use only the single-threaded WASM builds. Never require cross-origin isolation.
 - Everything is self-hosted and precached by the service worker, so the app works offline after the first load. `vite-plugin-static-copy` copies (flattened, `rename: { stripBase: true }`) `node_modules/@mediapipe/tasks-vision/wasm/*` → `dist/mediapipe-wasm`, `@techstark/opencv-js/dist/opencv.js` → `dist/opencv`, `libheif-js/libheif-wasm/libheif-bundle.mjs` → `dist/libheif`. The model `public/models/face_landmarker.task` is committed (download once from the MediaPipe model storage URL in the official docs). Workbox: `globPatterns: ['**/*.{js,mjs,css,html,svg,png,wasm,task}']`, `maximumFileSizeToCacheInBytes: 30 MB`; Vite `chunkSizeWarningLimit: 12000`.
-- Vite `base`: `process.env.GITHUB_REPOSITORY ? '/' + repoName + '/' : '/'`. Dev server `0.0.0.0:5173`, preview `0.0.0.0:4173`.
+- Vite `base`: `'/'` (served from the custom domain root).
 - Manifest: `name`/`short_name` = `APP_NAME` ('KeeperShot', declared in both `src/config.ts` and `vite.config.ts`; change both to rename), `display: 'standalone'`, `theme_color #f97316`, `background_color #ffffff`, icons `public/icons/icon-192.png` and `icon-512.png` (`purpose: 'any maskable'`; generate from `icon.svg`).
 - One ES-module pipeline worker. MediaPipe's and OpenCV's loaders call `importScripts`, which module workers lack, so `worker/lib/opencv.ts` shims it with a synchronous XHR + global eval.
 - The OpenCV.js build lacks `estimateAffinePartial2D` and `seamlessClone`: the similarity fallback is a small JS RANSAC (`core/ransac.ts`) and Laplacian-pyramid blending is always used.
