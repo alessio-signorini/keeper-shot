@@ -5,8 +5,15 @@ import { apply, center, fitSimilarity } from './geometry';
 /** Eye corners, nose tip and mouth corners: stable points used to fit frame-to-frame transforms from faces. */
 export const ALIGN_LANDMARKS = [33, 133, 362, 263, 1, 61, 291];
 
-export interface AlignFace { box: Box; landmarks: Pt[] }
-export interface FaceMatch { a: number; b: number; d: number }
+export interface AlignFace {
+  box: Box;
+  landmarks: Pt[];
+}
+export interface FaceMatch {
+  a: number;
+  b: number;
+  d: number;
+}
 
 /** Greedy one-to-one matching of A's faces (mapped by m) to B's faces; d is the centre distance in B face widths. */
 export function matchFaces(m: Mat3, A: AlignFace[], B: AlignFace[], tol: number): FaceMatch[] {
@@ -20,7 +27,9 @@ export function matchFaces(m: Mat3, A: AlignFace[], B: AlignFace[], tol: number)
     });
   });
   cand.sort((x, y) => x.d - y.d);
-  const ua = new Set<number>(), ub = new Set<number>(), out: FaceMatch[] = [];
+  const ua = new Set<number>(),
+    ub = new Set<number>(),
+    out: FaceMatch[] = [];
   for (const c of cand) {
     if (ua.has(c.a) || ub.has(c.b)) continue;
     ua.add(c.a);
@@ -48,7 +57,11 @@ function refine(m: Mat3, A: AlignFace[], B: AlignFace[]): Mat3 {
   return m;
 }
 
-export interface FaceAlignment { m: Mat3; matched: number; err: number }
+export interface FaceAlignment {
+  m: Mat3;
+  matched: number;
+  err: number;
+}
 
 /** How well a transform lines up A's faces with B's faces. */
 export function scoreAlignment(m: Mat3, A: AlignFace[], B: AlignFace[]): FaceAlignment {
@@ -69,7 +82,8 @@ export function alignByFaces(A: AlignFace[], B: AlignFace[], seed?: Mat3): FaceA
     for (const fb of B) {
       const k = fb.box.w / Math.max(fa.box.w, 1);
       if (k < C.ALIGN_SCALE_MIN || k > C.ALIGN_SCALE_MAX) continue;
-      const [ax, ay] = center(fa.box), [bx, by] = center(fb.box);
+      const [ax, ay] = center(fa.box),
+        [bx, by] = center(fb.box);
       hyps.push([k, 0, bx - k * ax, 0, k, by - k * ay, 0, 0, 1]);
     }
   }

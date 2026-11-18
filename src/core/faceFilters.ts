@@ -12,7 +12,16 @@ export function dropSmallOutliers<T extends { box: Box }>(faces: T[]): T[] {
   return faces.filter((f) => f.box.w >= median * C.MIN_REL_FACE);
 }
 
-const GAZE = ['eyeLookInLeft', 'eyeLookOutLeft', 'eyeLookUpLeft', 'eyeLookDownLeft', 'eyeLookInRight', 'eyeLookOutRight', 'eyeLookUpRight', 'eyeLookDownRight'];
+const GAZE = [
+  'eyeLookInLeft',
+  'eyeLookOutLeft',
+  'eyeLookUpLeft',
+  'eyeLookDownLeft',
+  'eyeLookInRight',
+  'eyeLookOutRight',
+  'eyeLookUpRight',
+  'eyeLookDownRight',
+];
 
 /**
  * Non-faces that slip through (feet, background patterns) get landmarks whose "eyes" look to extremes in several

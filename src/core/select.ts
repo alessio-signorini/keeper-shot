@@ -5,7 +5,10 @@ import { funnyPenalty } from './score';
 
 // MediaPipe 478-landmark indices
 const RIGID = [33, 133, 362, 263, 6, 168, 10, 338, 297, 332, 284, 251, 21, 54, 103, 67, 109, 162, 389];
-const EYE_L = 263, EYE_L_IN = 362, EYE_R = 33, EYE_R_IN = 133;
+const EYE_L = 263,
+  EYE_L_IN = 362,
+  EYE_R = 33,
+  EYE_R_IN = 133;
 
 export interface Feasibility {
   eyes: { ok: boolean; reason?: string };
@@ -42,24 +45,37 @@ export function swapFeasibility(src: Face, base: Face | undefined): Feasibility 
   const turned = 'head turned too much';
   const shape = 'face shape differs too much';
   const eyes =
-    dpose > C.EYES_MAX_DPOSE ? { ok: false, reason: turned }
-    : residual > C.EYES_MAX_RESIDUAL ? { ok: false, reason: shape }
-    : { ok: true };
+    dpose > C.EYES_MAX_DPOSE
+      ? { ok: false, reason: turned }
+      : residual > C.EYES_MAX_RESIDUAL
+        ? { ok: false, reason: shape }
+        : { ok: true };
   const face =
-    dpose > C.FACE_MAX_DPOSE ? { ok: false, reason: turned }
-    : residual > C.FACE_MAX_RESIDUAL ? { ok: false, reason: shape }
-    : { ok: true };
+    dpose > C.FACE_MAX_DPOSE
+      ? { ok: false, reason: turned }
+      : residual > C.FACE_MAX_RESIDUAL
+        ? { ok: false, reason: shape }
+        : { ok: true };
   return { eyes, face, dpose, residual };
 }
 
 export function autoMode(src: Face, base: Face | undefined, feas: Feasibility): SwapMode | null {
-  if (base && feas.eyes.ok && Math.abs(base.score.smile - src.score.smile) <= C.SMILE_SIMILAR && funnyPenalty(base.blend) === 0)
+  if (
+    base &&
+    feas.eyes.ok &&
+    Math.abs(base.score.smile - src.score.smile) <= C.SMILE_SIMILAR &&
+    funnyPenalty(base.blend) === 0
+  )
     return 'eyes';
   if (feas.face.ok) return 'face';
   return null;
 }
 
-export interface PersonChoice { pick: Pick; baseScore: number; best: number }
+export interface PersonChoice {
+  pick: Pick;
+  baseScore: number;
+  best: number;
+}
 
 /** True when the pick pastes a face from another frame. */
 export const isSwap = (p: Pick | undefined): boolean => p?.mode === 'eyes' || p?.mode === 'face';
@@ -89,11 +105,18 @@ export function choosePick(person: Person, baseFrameId: string, faces: Record<st
   return { pick: { personId: person.id, faceId: baseFace.id, mode: 'base', auto: true }, baseScore, best: baseScore };
 }
 
-export interface BaseEvaluation { frameId: string; swaps: number; sum: number; inliers: number; picks: Record<string, Pick> }
+export interface BaseEvaluation {
+  frameId: string;
+  swaps: number;
+  sum: number;
+  inliers: number;
+  picks: Record<string, Pick>;
+}
 
 export function evaluateBase(frame: Frame, people: Person[], faces: Record<string, Face>): BaseEvaluation {
   const picks: Record<string, Pick> = {};
-  let swaps = 0, sum = 0;
+  let swaps = 0,
+    sum = 0;
   for (const p of people) {
     const c = choosePick(p, frame.id, faces);
     picks[p.id] = c.pick;
@@ -114,7 +137,8 @@ export function chooseBase(frames: Frame[], people: Person[], faces: Record<stri
     const ids = Object.values(p.faces);
     const top = Math.max(...ids.map((id) => faces[id].score.total));
     for (const id of ids) {
-      if (faces[id].score.total >= top - C.WIN_EPSILON) wins.set(faces[id].frameId, (wins.get(faces[id].frameId) ?? 0) + 1);
+      if (faces[id].score.total >= top - C.WIN_EPSILON)
+        wins.set(faces[id].frameId, (wins.get(faces[id].frameId) ?? 0) + 1);
     }
   }
   const evals = frames.map((f) => evaluateBase(f, people, faces));
@@ -123,7 +147,10 @@ export function chooseBase(frames: Frame[], people: Person[], faces: Record<stri
   const tol = C.BASE_SUM_TOL * people.length;
   const top = Math.max(...evals.map((e) => e.sum));
   const close = evals.filter((e) => e.sum >= top - tol);
-  close.sort((a, b) => a.swaps - b.swaps || wins.get(b.frameId)! - wins.get(a.frameId)! || b.sum - a.sum || b.inliers - a.inliers);
+  close.sort(
+    (a, b) =>
+      a.swaps - b.swaps || wins.get(b.frameId)! - wins.get(a.frameId)! || b.sum - a.sum || b.inliers - a.inliers,
+  );
   return close[0];
 }
 
@@ -158,7 +185,12 @@ export function rebase(
  * Amber "check this" faces: a low-scoring final face, or a person seen in at least half the frames who has no face
  * in the base frame (short-lived clusters are usually grouping fragments and would only add noise).
  */
-export function needsAttention(person: Person, pick: Pick | undefined, faces: Record<string, Face>, frameCount: number): boolean {
+export function needsAttention(
+  person: Person,
+  pick: Pick | undefined,
+  faces: Record<string, Face>,
+  frameCount: number,
+): boolean {
   if (!pick) return true;
   if (pick.mode === 'skip') return Object.keys(person.faces).length >= frameCount / 2;
   return (faces[pick.faceId]?.score.total ?? 0) < C.LOW_CONFIDENCE_TOTAL;

@@ -5,18 +5,29 @@ import path from 'node:path';
 
 const fixturesDir = path.resolve('tests/fixtures');
 const bursts = fs.existsSync(fixturesDir)
-  ? fs.readdirSync(fixturesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(fixturesDir, d.name))
+  ? fs
+      .readdirSync(fixturesDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => path.join(fixturesDir, d.name))
   : [];
 const imagesIn = (dir: string) =>
-  fs.readdirSync(dir).filter((f) => /\.(jpe?g|png|heic)$/i.test(f)).sort().map((f) => path.join(dir, f));
+  fs
+    .readdirSync(dir)
+    .filter((f) => /\.(jpe?g|png|heic)$/i.test(f))
+    .sort()
+    .map((f) => path.join(dir, f));
 
 /** Width/height from the first SOF marker. */
 function jpegSize(b: Buffer): [number, number] {
   let i = 2;
   while (i + 9 < b.length) {
-    if (b[i] !== 0xff) { i++; continue; }
+    if (b[i] !== 0xff) {
+      i++;
+      continue;
+    }
     const m = b[i + 1];
-    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc)
+      return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
     i += 2 + b.readUInt16BE(i + 2);
   }
   return [0, 0];
@@ -31,7 +42,10 @@ test('app loads, registers the service worker and shows the upload screen', asyn
 });
 
 test('upload enables Start and shows thumbnails', async ({ page }) => {
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
   await page.goto('/');
   await page.locator('input[type=file]').setInputFiles([
     { name: 'a.png', mimeType: 'image/png', buffer: png },
@@ -60,7 +74,10 @@ for (const dir of bursts) {
     const hasPreview = await page.locator('canvas').evaluate((c: HTMLCanvasElement) => c.width > 0 && c.height > 0);
     expect(hasPreview).toBe(true);
 
-    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 120_000 }), page.getByRole('button', { name: 'Save', exact: true }).click()]);
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 120_000 }),
+      page.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
     const out = fs.readFileSync((await download.path())!);
     expect(out[0]).toBe(0xff);
     expect(out[1]).toBe(0xd8);

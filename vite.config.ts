@@ -20,7 +20,11 @@ export default defineConfig({
       targets: [
         { src: 'node_modules/@mediapipe/tasks-vision/wasm/*', dest: 'mediapipe-wasm', rename: { stripBase: true } },
         { src: 'node_modules/@techstark/opencv-js/dist/opencv.js', dest: 'opencv', rename: { stripBase: true } },
-        { src: 'node_modules/libheif-js/libheif-wasm/libheif-bundle.mjs', dest: 'libheif', rename: { stripBase: true } },
+        {
+          src: 'node_modules/libheif-js/libheif-wasm/libheif-bundle.mjs',
+          dest: 'libheif',
+          rename: { stripBase: true },
+        },
       ],
     }),
     VitePWA({

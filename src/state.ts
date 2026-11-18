@@ -50,18 +50,35 @@ const log = (m: string) => (feed.value = [...feed.value, m]);
 
 function onEvent(e: PipelineEvent) {
   switch (e.type) {
-    case 'loaded': log(`Loaded ${e.count} photos (${e.megapixels} MP each)`); break;
-    case 'detected': log(`Photo ${e.frame}/${e.total}: found ${e.faces} faces`); break;
-    case 'thumb': thumbs.value = [...thumbs.value, e]; break;
-    case 'aligned':
-      log(e.byFaces
-        ? `Aligned photo ${e.frame} using faces — ${e.byFaces.matched}/${e.byFaces.of} faces line up`
-        : `Aligned photo ${e.frame} — ${e.inliers} matching points${e.fallback ? ' (fallback)' : ''}`);
+    case 'loaded':
+      log(`Loaded ${e.count} photos (${e.megapixels} MP each)`);
       break;
-    case 'grouped': log(`Grouped ${e.people} people across ${e.frames} photos`); session.value = e.session; break;
-    case 'base': log(`Best base: photo ${e.frame} — needs ${e.swaps} fix${e.swaps === 1 ? '' : 'es'}`); break;
-    case 'warn': log(`⚠ ${e.message}`); break;
-    case 'progress': percent.value = Math.max(percent.value, e.percent); break;
+    case 'detected':
+      log(`Photo ${e.frame}/${e.total}: found ${e.faces} faces`);
+      break;
+    case 'thumb':
+      thumbs.value = [...thumbs.value, e];
+      break;
+    case 'aligned':
+      log(
+        e.byFaces
+          ? `Aligned photo ${e.frame} using faces — ${e.byFaces.matched}/${e.byFaces.of} faces line up`
+          : `Aligned photo ${e.frame} — ${e.inliers} matching points${e.fallback ? ' (fallback)' : ''}`,
+      );
+      break;
+    case 'grouped':
+      log(`Grouped ${e.people} people across ${e.frames} photos`);
+      session.value = e.session;
+      break;
+    case 'base':
+      log(`Best base: photo ${e.frame} — needs ${e.swaps} fix${e.swaps === 1 ? '' : 'es'}`);
+      break;
+    case 'warn':
+      log(`⚠ ${e.message}`);
+      break;
+    case 'progress':
+      percent.value = Math.max(percent.value, e.percent);
+      break;
   }
 }
 
@@ -162,7 +179,8 @@ export async function plainBase(): Promise<ImageBitmap> {
 
 // Desktop share sheets (macOS/Windows) have no "save to disk"; only use sharing where it saves to Photos/Files.
 const isMobile = () =>
-  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 
 export async function saveResult(mode: 'auto' | 'download' = 'auto') {
   const s = session.value!;

@@ -1,4 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// OpenCV.js ships without usable typings.
 export type CV = any;
 
 /**
@@ -10,7 +10,9 @@ export function installImportScripts(): void {
   try {
     g.importScripts?.(); // classic workers accept an empty call; module workers throw
     return;
-  } catch { /* module worker */ }
+  } catch {
+    /* module worker */
+  }
   g.importScripts = (...urls: string[]) => {
     for (const u of urls) {
       const xhr = new XMLHttpRequest();
@@ -45,7 +47,11 @@ export class Tracker {
   }
   dispose() {
     for (const m of this.items.reverse()) {
-      try { m.delete(); } catch { /* already freed */ }
+      try {
+        m.delete();
+      } catch {
+        /* already freed */
+      }
     }
     this.items = [];
   }

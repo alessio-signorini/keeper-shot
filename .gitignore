@@ -1,7 +1,8 @@
 node_modules
 dist
-tests/fixtures/*
-!tests/fixtures/README.md
+tests/fixtures/*/*
+!tests/fixtures/*/expected.json
 test-results
 playwright-report
 .DS_Store
+.scratch

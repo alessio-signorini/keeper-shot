@@ -52,7 +52,7 @@ export function closeDetector(): void {
   mode = null;
 }
 
-function run(image: ImageBitmap, offX: number, offY: number, w: number, h: number, minFace = C.MIN_FACE_PX, full = false): RawFace[] {
+function run(image: ImageBitmap, offX: number, offY: number, w: number, h: number, minFace = C.MIN_FACE_PX): RawFace[] {
   const res = landmarker!.detect(image);
   const out: RawFace[] = [];
   res.faceLandmarks.forEach((lm, i) => {
@@ -68,7 +68,8 @@ function run(image: ImageBitmap, offX: number, offY: number, w: number, h: numbe
 }
 
 const same = (a: Box, b: Box) => {
-  const ca = [a.x + a.w / 2, a.y + a.h / 2], cb = [b.x + b.w / 2, b.y + b.h / 2];
+  const ca = [a.x + a.w / 2, a.y + a.h / 2],
+    cb = [b.x + b.w / 2, b.y + b.h / 2];
   const inside = (c: number[], r: Box) => c[0] > r.x && c[0] < r.x + r.w && c[1] > r.y && c[1] < r.y + r.h;
   return iou(a, b) > C.TILE_MERGE_IOU || inside(ca, b) || inside(cb, a);
 };
@@ -79,7 +80,8 @@ const same = (a: Box, b: Box) => {
  * `region` limits the fine scales to where the group was found in the previous frame.
  */
 export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promise<RawFace[]> {
-  const w = canvas.width, h = canvas.height;
+  const w = canvas.width,
+    h = canvas.height;
   const out: RawFace[] = [];
   const add = (fs: RawFace[]) => {
     for (const f of fs) if (!out.some((m) => same(m.box, f.box))) out.push(f);
@@ -98,9 +100,15 @@ export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promis
     const tile = await createImageBitmap(canvas, t.x, t.y, t.w, t.h);
     try {
       // faces cut by an interior tile edge are partial; an overlapping tile sees them whole
-      add(run(tile, t.x, t.y, t.w, t.h).filter((f) =>
-        (t.x === 0 || f.box.x > t.x + edge) && (t.x + t.w >= w || f.box.x + f.box.w < t.x + t.w - edge) &&
-        (t.y === 0 || f.box.y > t.y + edge) && (t.y + t.h >= h || f.box.y + f.box.h < t.y + t.h - edge)));
+      add(
+        run(tile, t.x, t.y, t.w, t.h).filter(
+          (f) =>
+            (t.x === 0 || f.box.x > t.x + edge) &&
+            (t.x + t.w >= w || f.box.x + f.box.w < t.x + t.w - edge) &&
+            (t.y === 0 || f.box.y > t.y + edge) &&
+            (t.y + t.h >= h || f.box.y + f.box.h < t.y + t.h - edge),
+        ),
+      );
     } finally {
       tile.close();
     }
@@ -110,23 +118,33 @@ export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promis
 
 async function detectInCrop(src: ImageBitmap, box: Box, context: number, full: boolean): Promise<RawFace | null> {
   const side = Math.min(Math.max(box.w, box.h) * context, src.width, src.height);
-  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  const cx = box.x + box.w / 2,
+    cy = box.y + box.h / 2;
   const sx = Math.round(Math.min(Math.max(0, cx - side / 2), src.width - side));
   const sy = Math.round(Math.min(Math.max(0, cy - side / 2), src.height - side));
-  const sw = Math.round(side), sh = Math.round(side);
+  const sw = Math.round(side),
+    sh = Math.round(side);
   const out = Math.max(C.REFINE_MIN_PX, Math.min(sw, C.REFINE_PX));
   await setMode(full ? 'full' : 'scan');
-  const crop = await createImageBitmap(src, sx, sy, sw, sh, { resizeWidth: out, resizeHeight: out, resizeQuality: 'high' });
+  const crop = await createImageBitmap(src, sx, sy, sw, sh, {
+    resizeWidth: out,
+    resizeHeight: out,
+    resizeQuality: 'high',
+  });
   let found: RawFace[];
   try {
-    found = run(crop, sx, sy, sw, sh, 0, full);
+    found = run(crop, sx, sy, sw, sh, 0);
   } finally {
     crop.close();
   }
-  let best: RawFace | null = null, bestIou = C.REFINE_MIN_IOU;
+  let best: RawFace | null = null,
+    bestIou = C.REFINE_MIN_IOU;
   for (const f of found) {
     const v = iou(f.box, box);
-    if (v >= bestIou) { best = f; bestIou = v; }
+    if (v >= bestIou) {
+      best = f;
+      bestIou = v;
+    }
   }
   return best;
 }
@@ -150,12 +168,16 @@ export function sharpnessOf(canvas: OffscreenCanvas | ImageBitmap, box: Box): nu
   const d = ctx.getImageData(0, 0, sw, sh).data;
   const g = new Float32Array(sw * sh);
   for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-  let sum = 0, sum2 = 0, n = 0;
+  let sum = 0,
+    sum2 = 0,
+    n = 0;
   for (let y = 1; y < sh - 1; y++) {
     for (let x = 1; x < sw - 1; x++) {
       const i = y * sw + x;
       const l = g[i - 1] + g[i + 1] + g[i - sw] + g[i + sw] - 4 * g[i];
-      sum += l; sum2 += l * l; n++;
+      sum += l;
+      sum2 += l * l;
+      n++;
     }
   }
   const mean = sum / n;
@@ -164,8 +186,10 @@ export function sharpnessOf(canvas: OffscreenCanvas | ImageBitmap, box: Box): nu
 
 export async function faceThumb(canvas: OffscreenCanvas | ImageBitmap, box: Box): Promise<Blob> {
   const pad = 0.25;
-  const x = Math.max(0, box.x - box.w * pad), y = Math.max(0, box.y - box.h * pad);
-  const w = Math.min(canvas.width - x, box.w * (1 + 2 * pad)), h = Math.min(canvas.height - y, box.h * (1 + 2 * pad));
+  const x = Math.max(0, box.x - box.w * pad),
+    y = Math.max(0, box.y - box.h * pad);
+  const w = Math.min(canvas.width - x, box.w * (1 + 2 * pad)),
+    h = Math.min(canvas.height - y, box.h * (1 + 2 * pad));
   const s = C.THUMB_PX / Math.max(w, h);
   const c = new OffscreenCanvas(Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
   c.getContext('2d')!.drawImage(canvas, x, y, w, h, 0, 0, c.width, c.height);

@@ -11,8 +11,10 @@ export function hungarian(cost: number[][]): number[] {
   const a: number[][] = Array.from({ length: n + 1 }, (_, i) =>
     Array.from({ length: n + 1 }, (_, j) => (i >= 1 && j >= 1 && i <= rows && j <= cols ? cost[i - 1][j - 1] : 0)),
   );
-  const u = new Array(n + 1).fill(0), v = new Array(n + 1).fill(0);
-  const p = new Array(n + 1).fill(0), way = new Array(n + 1).fill(0);
+  const u = new Array(n + 1).fill(0),
+    v = new Array(n + 1).fill(0);
+  const p = new Array(n + 1).fill(0),
+    way = new Array(n + 1).fill(0);
   for (let i = 1; i <= n; i++) {
     p[0] = i;
     let j0 = 0;
@@ -21,26 +23,43 @@ export function hungarian(cost: number[][]): number[] {
     do {
       used[j0] = true;
       const i0 = p[j0];
-      let delta = Infinity, j1 = 0;
+      let delta = Infinity,
+        j1 = 0;
       for (let j = 1; j <= n; j++) {
         if (used[j]) continue;
         const cur = a[i0][j] - u[i0] - v[j];
-        if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
-        if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+        if (cur < minv[j]) {
+          minv[j] = cur;
+          way[j] = j0;
+        }
+        if (minv[j] < delta) {
+          delta = minv[j];
+          j1 = j;
+        }
       }
       for (let j = 0; j <= n; j++) {
-        if (used[j]) { u[p[j]] += delta; v[j] -= delta; } else minv[j] -= delta;
+        if (used[j]) {
+          u[p[j]] += delta;
+          v[j] -= delta;
+        } else minv[j] -= delta;
       }
       j0 = j1;
     } while (p[j0] !== 0);
-    do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+    do {
+      const j1 = way[j0];
+      p[j0] = p[j1];
+      j0 = j1;
+    } while (j0);
   }
   const res = new Array(rows).fill(-1);
   for (let j = 1; j <= n; j++) if (p[j] >= 1 && p[j] <= rows && j <= cols) res[p[j] - 1] = j - 1;
   return res;
 }
 
-interface Cluster { faces: Record<string, string>; boxes: Box[] }
+interface Cluster {
+  faces: Record<string, string>;
+  boxes: Box[];
+}
 
 function meanBox(bs: Box[]): Box {
   const n = bs.length;
@@ -67,16 +86,19 @@ function mergeFragments(clusters: Cluster[], order: string[]): void {
     for (let a = 0; a < clusters.length; a++) {
       for (let b = a + 1; b < clusters.length; b++) {
         if (Object.keys(clusters[a].faces).some((k) => k in clusters[b].faces)) continue;
-        const sa = span(clusters[a]), sb = span(clusters[b]);
+        const sa = span(clusters[a]),
+          sb = span(clusters[b]);
         const gap = sa.hi < sb.lo ? sb.lo - sa.hi : sb.hi < sa.lo ? sa.lo - sb.hi : 1; // interleaved: treat as adjacent
-        const ma = meanBox(clusters[a].boxes), mb = meanBox(clusters[b].boxes);
+        const ma = meanBox(clusters[a].boxes),
+          mb = meanBox(clusters[b].boxes);
         const d = Math.hypot(center(ma)[0] - center(mb)[0], center(ma)[1] - center(mb)[1]) / Math.max(ma.w, mb.w, 1);
         const limit = C.GROUP_MERGE_BASE + C.GROUP_MERGE_PER_FRAME * gap;
         if (d <= limit && (!best || d / limit < best.score)) best = { a, b, score: d / limit };
       }
     }
     if (!best) return;
-    const keep = clusters[best.a], gone = clusters[best.b];
+    const keep = clusters[best.a],
+      gone = clusters[best.b];
     Object.assign(keep.faces, gone.faces);
     keep.boxes.push(...gone.boxes);
     clusters.splice(best.b, 1);
@@ -93,7 +115,10 @@ export function groupFaces(frames: Pick<Frame, 'id'>[], faces: Record<string, Fa
   let most = -1;
   for (const f of frames) {
     const n = byFrame.get(f.id)!.length;
-    if (n > most) { most = n; seedId = f.id; }
+    if (n > most) {
+      most = n;
+      seedId = f.id;
+    }
   }
   if (seedId === undefined) return [];
 
@@ -113,7 +138,10 @@ export function groupFaces(frames: Pick<Frame, 'id'>[], faces: Record<string, Fa
     const assign = clusters.length ? hungarian(cost) : fs.map(() => -1);
     fs.forEach((f, i) => {
       const j = assign[i];
-      const near = j >= 0 && Math.hypot(center(f.refBox)[0] - center(means[j])[0], center(f.refBox)[1] - center(means[j])[1]) <= C.GROUP_MAX_DIST * Math.max(f.refBox.w, means[j].w);
+      const near =
+        j >= 0 &&
+        Math.hypot(center(f.refBox)[0] - center(means[j])[0], center(f.refBox)[1] - center(means[j])[1]) <=
+          C.GROUP_MAX_DIST * Math.max(f.refBox.w, means[j].w);
       if (j >= 0 && (iou(f.refBox, means[j]) >= C.GROUP_MIN_IOU || near)) {
         clusters[j].faces[fr.id] = f.id;
         clusters[j].boxes.push(f.refBox);
@@ -123,7 +151,10 @@ export function groupFaces(frames: Pick<Frame, 'id'>[], faces: Record<string, Fa
     });
   }
 
-  mergeFragments(clusters, frames.map((f) => f.id));
+  mergeFragments(
+    clusters,
+    frames.map((f) => f.id),
+  );
 
   const minFrames = Math.max(1, Math.ceil(frames.length * C.GROUP_MIN_FRAME_FRACTION));
   return clusters

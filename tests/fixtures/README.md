@@ -8,4 +8,4 @@ Optionally add `expected.json` to a folder to assert the number of people found:
 { "people": 5 }
 ```
 
-Fixtures are gitignored (except this file). When no burst folders exist, the full-pipeline e2e tests are skipped.
+Fixture images are gitignored; `expected.json` files are tracked. When no burst folders exist, the full-pipeline e2e tests are skipped.

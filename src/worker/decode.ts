@@ -17,13 +17,13 @@ function isHeic(blob: Blob): boolean {
 async function decodeHeic(blob: Blob, baseUrl: string): Promise<ImageBitmap> {
   const url = new URL('libheif/libheif-bundle.mjs', baseUrl).href;
   const mod = (await import(/* @vite-ignore */ url)) as { default: unknown };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lib: any = typeof mod.default === 'function' ? (mod.default as () => unknown)() : mod.default;
   const decoder = new lib.HeifDecoder();
   const images = decoder.decode(new Uint8Array(await blob.arrayBuffer()));
   if (!images?.length) throw new Error('HEIC decode failed');
   const img = images[0];
-  const w: number = img.get_width(), h: number = img.get_height();
+  const w: number = img.get_width(),
+    h: number = img.get_height();
   const data = new ImageData(w, h);
   await new Promise<void>((resolve, reject) =>
     img.display(data, (d: ImageData | null) => (d ? resolve() : reject(new Error('HEIC display failed')))),

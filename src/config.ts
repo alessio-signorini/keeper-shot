@@ -1,5 +1,4 @@
 export const APP_NAME = 'KeeperShot';
-export const ACCENT = '#f97316';
 
 // Ingest
 export const MIN_FILES = 2;
@@ -92,14 +91,12 @@ export const SMILE_SIMILAR = 0.1;
 
 // Composite
 export const ROI_SCALE = 1.6;
-export const ROI_MARGIN = 0.3;
 export const FACE_FOREHEAD_RAISE = 0.15;
 export const FACE_JAW_ERODE = 0.03;
 export const FACE_FEATHER = 0.08;
 export const EYES_DILATE = 0.25;
 export const EYES_FEATHER = 0.3;
 export const PYRAMID_LEVELS = 5;
-export const USE_POISSON = false;
 export const PREVIEW_LONG_EDGE = 1600;
 
 // Progress weights (percent)

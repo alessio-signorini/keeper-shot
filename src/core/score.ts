@@ -56,7 +56,8 @@ export function scoreFace(
 /** Min-max normalize sharpness values within one person's cluster. */
 export function normalizeSharpness(values: number[]): number[] {
   if (!values.length) return [];
-  const lo = Math.min(...values), hi = Math.max(...values);
+  const lo = Math.min(...values),
+    hi = Math.max(...values);
   if (hi - lo < 1e-9) return values.map(() => 1);
   return values.map((v) => (v - lo) / (hi - lo));
 }

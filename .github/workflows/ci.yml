@@ -10,4 +10,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: npm run typecheck && npm run test
+      - run: npm run format:check && npm run typecheck && npm run test

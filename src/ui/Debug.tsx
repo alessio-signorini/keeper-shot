@@ -15,7 +15,9 @@ export function Debug() {
   const [on, setOn] = useState<Record<Layer, boolean>>({ landmarks: true, boxes: true, masks: false, matches: false });
   const canvas = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => { void loadSession().then((x) => x && setS(x)); }, []);
+  useEffect(() => {
+    void loadSession().then((x) => x && setS(x));
+  }, []);
 
   useEffect(() => {
     if (!s) return;
@@ -41,9 +43,14 @@ export function Debug() {
         for (const [x, y, rx, ry] of frame.matches) {
           const [ex, ey] = apply(fromRef, [rx, ry]);
           ctx.strokeStyle = '#22c55e';
-          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
           ctx.fillStyle = '#eab308';
-          ctx.beginPath(); ctx.arc(x, y, lw * 1.5, 0, 7); ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, lw * 1.5, 0, 7);
+          ctx.fill();
         }
       }
       for (const face of Object.values(s.faces).filter((f) => f.frameId === frameId)) {
@@ -71,7 +78,9 @@ export function Debug() {
         }
       }
     })();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [s, frameId, on]);
 
   if (!s) return <div class="p-4">No session found. Process a burst first.</div>;
@@ -80,27 +89,60 @@ export function Debug() {
   return (
     <div class="space-y-3 p-3 text-sm">
       <div class="flex flex-wrap items-center gap-3">
-        <select class="rounded border p-1" value={frameId} onChange={(e) => setFrameId((e.target as HTMLSelectElement).value)}>
-          {s.frames.map((f) => <option key={f.id} value={f.id}>{f.id} — {f.name}{f.id === s.refFrameId ? ' (ref)' : ''}{f.id === s.baseFrameId ? ' (base)' : ''}</option>)}
+        <select
+          class="rounded border p-1"
+          value={frameId}
+          onChange={(e) => setFrameId((e.target as HTMLSelectElement).value)}
+        >
+          {s.frames.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.id} — {f.name}
+              {f.id === s.refFrameId ? ' (ref)' : ''}
+              {f.id === s.baseFrameId ? ' (base)' : ''}
+            </option>
+          ))}
         </select>
         {LAYERS.map((l) => (
           <label key={l} class="flex items-center gap-1">
             <input type="checkbox" checked={on[l]} onChange={() => setOn({ ...on, [l]: !on[l] })} /> {l}
           </label>
         ))}
-        <a class="underline" href="#">back</a>
+        <a class="underline" href="#">
+          back
+        </a>
       </div>
-      <div class="text-neutral-600">aligned by: {frame.alignMethod ?? 'orb'} · background inliers: {frame.alignInliers} · toRef: [{frame.toRef.map((v) => v.toFixed(3)).join(', ')}]</div>
+      <div class="text-neutral-600">
+        aligned by: {frame.alignMethod ?? 'orb'} · background inliers: {frame.alignInliers} · toRef: [
+        {frame.toRef.map((v) => v.toFixed(3)).join(', ')}]
+      </div>
       <canvas ref={canvas} class="w-full max-w-4xl bg-neutral-200" />
       <table class="w-full max-w-4xl text-left">
-        <thead><tr><th>face</th><th>person</th><th>eyes</th><th>gaze</th><th>pose</th><th>smile</th><th>sharp</th><th>total</th><th>center</th></tr></thead>
+        <thead>
+          <tr>
+            <th>face</th>
+            <th>person</th>
+            <th>eyes</th>
+            <th>gaze</th>
+            <th>pose</th>
+            <th>smile</th>
+            <th>sharp</th>
+            <th>total</th>
+            <th>center</th>
+          </tr>
+        </thead>
         <tbody>
           {faces.map((f) => (
             <tr key={f.id}>
               <td>{f.id}</td>
               <td>{s.people.find((p) => Object.values(p.faces).includes(f.id))?.id}</td>
-              {(['eyes', 'gaze', 'pose', 'smile', 'sharp', 'total'] as const).map((k) => <td key={k}>{f.score[k].toFixed(2)}</td>)}
-              <td>{center(f.box).map((v) => Math.round(v)).join(',')}</td>
+              {(['eyes', 'gaze', 'pose', 'smile', 'sharp', 'total'] as const).map((k) => (
+                <td key={k}>{f.score[k].toFixed(2)}</td>
+              ))}
+              <td>
+                {center(f.box)
+                  .map((v) => Math.round(v))
+                  .join(',')}
+              </td>
             </tr>
           ))}
         </tbody>

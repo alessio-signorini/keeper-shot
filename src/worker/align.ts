@@ -18,15 +18,22 @@ export interface AlignResult {
   matches: [number, number, number, number][];
 }
 
-function sampleMatches(pairs: { a: Pt; b: Pt }[], inlier: (i: number) => boolean, s: number): [number, number, number, number][] {
+function sampleMatches(
+  pairs: { a: Pt; b: Pt }[],
+  inlier: (i: number) => boolean,
+  s: number,
+): [number, number, number, number][] {
   const idx = pairs.map((_, i) => i).filter(inlier);
   const step = Math.max(1, Math.ceil(idx.length / C.DEBUG_MAX_MATCHES));
-  return idx.filter((_, k) => k % step === 0).map((i) => [pairs[i].a[0] / s, pairs[i].a[1] / s, pairs[i].b[0] / s, pairs[i].b[1] / s]);
+  return idx
+    .filter((_, k) => k % step === 0)
+    .map((i) => [pairs[i].a[0] / s, pairs[i].a[1] / s, pairs[i].b[0] / s, pairs[i].b[1] / s]);
 }
 
 export function maskBoxes(boxes: Box[], scale: number): Box[] {
   return boxes.map((b) => {
-    const w = b.w * scale * C.ALIGN_MASK_WIDE, cx = (b.x + b.w / 2) * scale;
+    const w = b.w * scale * C.ALIGN_MASK_WIDE,
+      cx = (b.x + b.w / 2) * scale;
     return { x: cx - w / 2, y: b.y * scale, w, h: b.h * scale * C.ALIGN_MASK_TALL };
   });
 }
@@ -38,7 +45,11 @@ export function toGray(canvas: OffscreenCanvas): Uint8Array {
   return g;
 }
 
-interface Feat { kp: Pt[]; des: CV; kpv: CV }
+interface Feat {
+  kp: Pt[];
+  des: CV;
+  kpv: CV;
+}
 
 function detect(cv: CV, f: AlignFeatures, t: { add: <T extends { delete: () => void }>(m: T) => T }): Feat {
   const gray = t.add(cv.matFromArray(f.h, f.w, cv.CV_8UC1, f.gray as unknown as number[]));
@@ -101,14 +112,30 @@ export class Aligner {
         for (let i = 0; i < knn.size(); i++) {
           const m = knn.get(i);
           if (m.size() < 2) continue;
-          const m0 = m.get(0), m1 = m.get(1);
-          if (m0.distance < C.LOWE_RATIO * m1.distance) pairs.push({ a: feat.kp[m0.queryIdx], b: this.ref.kp[m0.trainIdx] });
+          const m0 = m.get(0),
+            m1 = m.get(1);
+          if (m0.distance < C.LOWE_RATIO * m1.distance)
+            pairs.push({ a: feat.kp[m0.queryIdx], b: this.ref.kp[m0.trainIdx] });
         }
       }
       const full = (H: Mat3) => compose(Sinv, compose(H, S));
       if (pairs.length >= 4) {
-        const src = t.add(cv.matFromArray(pairs.length, 1, cv.CV_32FC2, pairs.flatMap((p) => p.a)));
-        const dst = t.add(cv.matFromArray(pairs.length, 1, cv.CV_32FC2, pairs.flatMap((p) => p.b)));
+        const src = t.add(
+          cv.matFromArray(
+            pairs.length,
+            1,
+            cv.CV_32FC2,
+            pairs.flatMap((p) => p.a),
+          ),
+        );
+        const dst = t.add(
+          cv.matFromArray(
+            pairs.length,
+            1,
+            cv.CV_32FC2,
+            pairs.flatMap((p) => p.b),
+          ),
+        );
         const inl = t.add(new cv.Mat());
         const H = t.add(cv.findHomography(src, dst, cv.RANSAC, C.RANSAC_THRESHOLD, inl));
         if (H && !H.empty()) {
@@ -120,14 +147,32 @@ export class Aligner {
           const sc = Math.sqrt(Math.abs(hm[0] * hm[4] - hm[1] * hm[3]));
           const ok =
             inliers >= C.ALIGN_MIN_INLIERS &&
-            Math.abs(hm[6]) < C.ALIGN_PERSPECTIVE_MAX && Math.abs(hm[7]) < C.ALIGN_PERSPECTIVE_MAX &&
-            sc >= C.ALIGN_SCALE_MIN && sc <= C.ALIGN_SCALE_MAX;
-          if (ok) return { toRefFull: full(hm), inliers, fallback: false, identity: false, matches: sampleMatches(pairs, (i) => !!inl.data[i], s) };
+            Math.abs(hm[6]) < C.ALIGN_PERSPECTIVE_MAX &&
+            Math.abs(hm[7]) < C.ALIGN_PERSPECTIVE_MAX &&
+            sc >= C.ALIGN_SCALE_MIN &&
+            sc <= C.ALIGN_SCALE_MAX;
+          if (ok)
+            return {
+              toRefFull: full(hm),
+              inliers,
+              fallback: false,
+              identity: false,
+              matches: sampleMatches(pairs, (i) => !!inl.data[i], s),
+            };
         }
-        const sim = ransacSimilarity(pairs.map((p) => p.a), pairs.map((p) => p.b));
+        const sim = ransacSimilarity(
+          pairs.map((p) => p.a),
+          pairs.map((p) => p.b),
+        );
         if (sim && sim.inliers >= C.ALIGN_MIN_INLIERS) {
           const set = new Set(sim.set);
-          return { toRefFull: full(sim.m), inliers: sim.inliers, fallback: true, identity: false, matches: sampleMatches(pairs, (i) => set.has(i), s) };
+          return {
+            toRefFull: full(sim.m),
+            inliers: sim.inliers,
+            fallback: true,
+            identity: false,
+            matches: sampleMatches(pairs, (i) => set.has(i), s),
+          };
         }
       }
       return { toRefFull: [...IDENTITY], inliers: 0, fallback: true, identity: true, matches: [] };
@@ -141,7 +186,7 @@ export function ransacSimilarity(a: Pt[], b: Pt[], iters = 500): { m: Mat3; inli
   if (n < 2) return null;
   let best: { m: Mat3; set: number[] } | null = null;
   let seed = 12345;
-  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
   for (let it = 0; it < iters; it++) {
     const i = Math.floor(rnd() * n);
     let j = Math.floor(rnd() * n);
@@ -156,7 +201,10 @@ export function ransacSimilarity(a: Pt[], b: Pt[], iters = 500): { m: Mat3; inli
     if (!best || set.length > best.set.length) best = { m, set };
   }
   if (!best || best.set.length < 2) return null;
-  const refit = fitSimilarity(best.set.map((k) => a[k]), best.set.map((k) => b[k]));
+  const refit = fitSimilarity(
+    best.set.map((k) => a[k]),
+    best.set.map((k) => b[k]),
+  );
   const sc = Math.hypot(refit.m[0], refit.m[3]);
   if (sc < C.ALIGN_SCALE_MIN || sc > C.ALIGN_SCALE_MAX) return null;
   return { m: refit.m, inliers: best.set.length, set: best.set };

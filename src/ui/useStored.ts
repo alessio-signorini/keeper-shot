@@ -18,7 +18,9 @@ export function useStored(key: string): string | null {
       urls.set(key, u);
       if (live) setUrl(u);
     });
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [key]);
   return url;
 }

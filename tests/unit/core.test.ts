@@ -20,9 +20,28 @@ describe('geometry', () => {
     expect(r[1]).toBeCloseTo(20);
   });
   it('fits a similarity exactly', () => {
-    const src: Pt[] = [[0, 0], [10, 0], [10, 10], [0, 10], [5, 3]];
-    const t: Mat3 = [1.5 * Math.cos(0.3), -1.5 * Math.sin(0.3), 7, 1.5 * Math.sin(0.3), 1.5 * Math.cos(0.3), -4, 0, 0, 1];
-    const { m, rms } = fitSimilarity(src, src.map((p) => apply(t, p)));
+    const src: Pt[] = [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+      [5, 3],
+    ];
+    const t: Mat3 = [
+      1.5 * Math.cos(0.3),
+      -1.5 * Math.sin(0.3),
+      7,
+      1.5 * Math.sin(0.3),
+      1.5 * Math.cos(0.3),
+      -4,
+      0,
+      0,
+      1,
+    ];
+    const { m, rms } = fitSimilarity(
+      src,
+      src.map((p) => apply(t, p)),
+    );
     expect(rms).toBeLessThan(1e-9);
     m.forEach((v, i) => expect(v).toBeCloseTo(t[i], 6));
   });
@@ -45,8 +64,11 @@ describe('pose', () => {
 
 describe('jpegQuality', () => {
   it('recovers quality 50 from the standard table (clamped)', () => {
-    const zz = [16, 11, 12, 14, 12, 10, 16, 14, 13, 14, 18, 17, 16, 19, 24, 40, 26, 24, 22, 22, 24, 49, 35, 37, 29, 40, 58, 51, 61, 60, 57, 51,
-      56, 55, 64, 72, 92, 78, 64, 68, 87, 69, 55, 56, 80, 109, 81, 87, 95, 98, 103, 104, 103, 62, 77, 113, 121, 112, 100, 120, 92, 101, 103, 99];
+    const zz = [
+      16, 11, 12, 14, 12, 10, 16, 14, 13, 14, 18, 17, 16, 19, 24, 40, 26, 24, 22, 22, 24, 49, 35, 37, 29, 40, 58, 51,
+      61, 60, 57, 51, 56, 55, 64, 72, 92, 78, 64, 68, 87, 69, 55, 56, 80, 109, 81, 87, 95, 98, 103, 104, 103, 62, 77,
+      113, 121, 112, 100, 120, 92, 101, 103, 99,
+    ];
     expect(estimateQualityFromTable(zz)).toBe(0.85);
   });
   it('maps an all-ones table to the max', () => {
@@ -60,28 +82,58 @@ describe('jpegQuality', () => {
 function lm(cx: number, cy: number, size: number): Pt[] {
   // 478 points on a small grid around center; index-specific eye points are spread plausibly
   const pts: Pt[] = [];
-  for (let i = 0; i < 478; i++) pts.push([cx + (((i * 37) % 100) / 100 - 0.5) * size, cy + (((i * 53) % 100) / 100 - 0.5) * size]);
+  for (let i = 0; i < 478; i++)
+    pts.push([cx + (((i * 37) % 100) / 100 - 0.5) * size, cy + (((i * 53) % 100) / 100 - 0.5) * size]);
   return pts;
 }
 
-function mkFace(frameId: string, i: number, cx: number, cy: number, o: Partial<Face> = {}, blend: Record<string, number> = {}): Face {
+function mkFace(
+  frameId: string,
+  i: number,
+  cx: number,
+  cy: number,
+  o: Partial<Face> = {},
+  blend: Record<string, number> = {},
+): Face {
   const size = 100;
   const pose = o.pose ?? { yaw: 0, pitch: 0, roll: 0 };
   const l = lm(cx, cy, size);
   return {
-    id: `${frameId}:${i}`, frameId, landmarks: l, refLandmarks: l,
-    box: { x: cx - 50, y: cy - 50, w: 100, h: 100 }, refBox: { x: cx - 50, y: cy - 50, w: 100, h: 100 },
-    blend, pose, sharpness: 1, score: scoreFace(blend, pose, 1), thumbKey: '', ...o,
+    id: `${frameId}:${i}`,
+    frameId,
+    landmarks: l,
+    refLandmarks: l,
+    box: { x: cx - 50, y: cy - 50, w: 100, h: 100 },
+    refBox: { x: cx - 50, y: cy - 50, w: 100, h: 100 },
+    blend,
+    pose,
+    sharpness: 1,
+    score: scoreFace(blend, pose, 1),
+    thumbKey: '',
+    ...o,
   };
 }
 
 const fr = (id: string, inliers = 100): Frame => ({
-  id, name: id, blobKey: id, width: 1000, height: 1000, toRef: [1, 0, 0, 0, 1, 0, 0, 0, 1], alignInliers: inliers, exif: {},
+  id,
+  name: id,
+  blobKey: id,
+  width: 1000,
+  height: 1000,
+  toRef: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  alignInliers: inliers,
+  exif: {},
 });
 
 describe('hungarian', () => {
   it('finds the min-cost assignment', () => {
-    expect(hungarian([[4, 1, 3], [2, 0, 5], [3, 2, 2]])).toEqual([1, 0, 2]);
+    expect(
+      hungarian([
+        [4, 1, 3],
+        [2, 0, 5],
+        [3, 2, 2],
+      ]),
+    ).toEqual([1, 0, 2]);
   });
   it('handles more rows than columns', () => {
     const r = hungarian([[1], [0.5]]);
@@ -124,10 +176,14 @@ describe('group', () => {
 describe('score', () => {
   it('penalizes blinks hard', () => {
     const open = scoreFace({ mouthSmileLeft: 0.5, mouthSmileRight: 0.5 }, { yaw: 0, pitch: 0 }, 1);
-    const blink = scoreFace({ eyeBlinkLeft: 0.9, eyeBlinkRight: 0.9, mouthSmileLeft: 0.5, mouthSmileRight: 0.5 }, { yaw: 0, pitch: 0 }, 1);
+    const blink = scoreFace(
+      { eyeBlinkLeft: 0.9, eyeBlinkRight: 0.9, mouthSmileLeft: 0.5, mouthSmileRight: 0.5 },
+      { yaw: 0, pitch: 0 },
+      1,
+    );
     expect(blink.total).toBeLessThan(open.total * 0.35);
   });
-  it('flags a blink relative to the person\'s own most-open eyes', () => {
+  it("flags a blink relative to the person's own most-open eyes", () => {
     const half = { eyeBlinkLeft: 0.45, eyeBlinkRight: 0.45 };
     expect(scoreFace(half, { yaw: 0, pitch: 0 }, 1, 0.6).total).toBeGreaterThan(0.5);
     expect(scoreFace(half, { yaw: 0, pitch: 0 }, 1, 0.9).total).toBeLessThan(0.3);
@@ -202,12 +258,23 @@ describe('select', () => {
 
 describe('faceAlign', () => {
   // a row-and-a-half of faces; frame B = frame A scaled 1.08, rotated 2°, shifted (camera moved)
-  const T: Mat3 = [1.08 * Math.cos(0.035), -1.08 * Math.sin(0.035), 140, 1.08 * Math.sin(0.035), 1.08 * Math.cos(0.035), -60, 0, 0, 1];
+  const T: Mat3 = [
+    1.08 * Math.cos(0.035),
+    -1.08 * Math.sin(0.035),
+    140,
+    1.08 * Math.sin(0.035),
+    1.08 * Math.cos(0.035),
+    -60,
+    0,
+    0,
+    1,
+  ];
   const xs = [100, 260, 420, 580, 740, 900, 180, 500, 820];
   const ys = [300, 310, 295, 305, 300, 310, 520, 530, 515];
   const mk = (cx: number, cy: number, m: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]) => {
     const l = lm(cx, cy, 80).map((p) => apply(m, p));
-    const c = apply(m, [cx, cy]), w = 80 * Math.hypot(m[0], m[3]);
+    const c = apply(m, [cx, cy]),
+      w = 80 * Math.hypot(m[0], m[3]);
     return { landmarks: l, box: { x: c[0] - w / 2, y: c[1] - w / 2, w, h: w } };
   };
 
@@ -218,7 +285,8 @@ describe('faceAlign', () => {
     A[5] = mk(xs[5] + 150, ys[5]); // one person moved
     const r = alignByFaces(A, B)!;
     expect(r.matched).toBe(7);
-    const p = apply(r.m, [500, 400]), q = apply(T, [500, 400]);
+    const p = apply(r.m, [500, 400]),
+      q = apply(T, [500, 400]);
     expect(Math.hypot(p[0] - q[0], p[1] - q[1])).toBeLessThan(2);
     // a background-only transform that is off by a face width lines up far fewer faces
     const off: Mat3 = [T[0], T[1], T[2] + 90, T[3], T[4], T[5], 0, 0, 1];

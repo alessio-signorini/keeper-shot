@@ -14,7 +14,11 @@ export function Upload() {
       for (const f of list) {
         if (!live) return; // Start was pressed or files changed: stop decoding photos on the page
         try {
-          const bmp = await createImageBitmap(f, { resizeWidth: THUMB_PX, resizeQuality: 'low', imageOrientation: 'from-image' });
+          const bmp = await createImageBitmap(f, {
+            resizeWidth: THUMB_PX,
+            resizeQuality: 'low',
+            imageOrientation: 'from-image',
+          });
           const c = document.createElement('canvas');
           c.width = bmp.width;
           c.height = bmp.height;
@@ -29,13 +33,18 @@ export function Upload() {
         setUrls([...made]);
       }
     })();
-    return () => { live = false; made.forEach((u) => u && URL.revokeObjectURL(u)); };
+    return () => {
+      live = false;
+      made.forEach((u) => u && URL.revokeObjectURL(u));
+    };
   }, [list]);
   const ok = list.length >= MIN_FILES && list.length <= MAX_FILES;
 
   const pick = (fl: FileList | File[] | null) => {
     if (!fl) return;
-    files.value = Array.from(fl).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)).slice(0, MAX_FILES);
+    files.value = Array.from(fl)
+      .filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name))
+      .slice(0, MAX_FILES);
   };
 
   return (
@@ -45,24 +54,42 @@ export function Upload() {
         <div class="flex items-center justify-between rounded-xl bg-orange-50 p-3">
           <span class="text-sm">You have a previous session.</span>
           <span class="flex gap-2">
-            <button class="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-medium text-white" onClick={resume}>Resume</button>
-            <button class="rounded-lg border px-3 py-1.5 text-sm" onClick={startOver}>Start over</button>
+            <button class="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-medium text-white" onClick={resume}>
+              Resume
+            </button>
+            <button class="rounded-lg border px-3 py-1.5 text-sm" onClick={startOver}>
+              Start over
+            </button>
           </span>
         </div>
       )}
       <label
         class="flex min-h-48 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-300 bg-orange-50 p-6 text-center"
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer?.files ?? null); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          pick(e.dataTransfer?.files ?? null);
+        }}
       >
-        <span class="text-lg font-medium">Pick {MIN_FILES}–{MAX_FILES} shots of the same group.</span>
+        <span class="text-lg font-medium">
+          Pick {MIN_FILES}–{MAX_FILES} shots of the same group.
+        </span>
         <span class="text-sm text-neutral-500">Tap or drop photos here</span>
-        <input type="file" accept="image/*,.heic,.heif" multiple class="hidden" onChange={(e) => pick((e.target as HTMLInputElement).files)} />
+        <input
+          type="file"
+          accept="image/*,.heic,.heif"
+          multiple
+          class="hidden"
+          onChange={(e) => pick((e.target as HTMLInputElement).files)}
+        />
       </label>
       {list.length > 0 && (
         <>
           <div class="grid grid-cols-4 gap-2 sm:grid-cols-6">
-            {urls.map((u, i) => u && <img key={u} src={u} alt={list[i].name} class="aspect-square w-full rounded-lg object-cover" />)}
+            {urls.map(
+              (u, i) =>
+                u && <img key={u} src={u} alt={list[i].name} class="aspect-square w-full rounded-lg object-cover" />,
+            )}
           </div>
           <p class="text-sm text-neutral-500">
             {list.length} selected{!ok && ` — need ${MIN_FILES}–${MAX_FILES}`}

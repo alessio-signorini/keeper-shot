@@ -4,11 +4,22 @@ import type { Box, Face, Frame, Mat3, Pick, Pt, Session } from '../types';
 import { Tracker, withMats, type CV } from './cv';
 import { isSwap } from '../core/select';
 
-export const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+export const FACE_OVAL = [
+  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+  172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+];
 const BROWS = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300];
 const EYE_SETS = [
-  { contour: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246], brow: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46], lower: [33, 7, 163, 144, 145, 153, 154, 155, 133] },
-  { contour: [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466], brow: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276], lower: [263, 249, 390, 373, 374, 380, 381, 382, 362] },
+  {
+    contour: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+    brow: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46],
+    lower: [33, 7, 163, 144, 145, 153, 154, 155, 133],
+  },
+  {
+    contour: [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466],
+    brow: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276],
+    lower: [263, 249, 390, 373, 374, 380, 381, 382, 362],
+  },
 ];
 const RIGID = [33, 133, 362, 263, 6, 168, 10, 338, 297, 332, 284, 251, 21, 54, 103, 67, 109, 162, 389];
 
@@ -30,7 +41,8 @@ export function convexHull(points: Pt[]): Pt[] {
 }
 
 function around(pts: Pt[], factor: number): Pt[] {
-  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length,
+    cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
   return pts.map((p) => [cx + (p[0] - cx) * factor, cy + (p[1] - cy) * factor]);
 }
 
@@ -46,7 +58,8 @@ export function maskPolygons(L: Pt[], mode: 'face' | 'eyes'): { poly: Pt[]; feat
       if (p[1] > cy + box.h * 0.25) {
         // pull the jawline in toward the face centre to avoid chin/neck seams
         const cx = box.x + box.w / 2;
-        const dx = cx - p[0], dy = cy - p[1];
+        const dx = cx - p[0],
+          dy = cy - p[1];
         const d = Math.hypot(dx, dy) || 1;
         return [p[0] + (dx / d) * C.FACE_JAW_ERODE * box.w, p[1] + (dy / d) * C.FACE_JAW_ERODE * box.w];
       }
@@ -58,7 +71,11 @@ export function maskPolygons(L: Pt[], mode: 'face' | 'eyes'): { poly: Pt[]; feat
   return EYE_SETS.map((e) => {
     const eye = boxOf(e.contour.map((i) => L[i]));
     const down = eye.w * 0.5;
-    const pts = [...e.contour.map((i) => L[i]), ...e.brow.map((i) => L[i]), ...e.lower.map((i): Pt => [L[i][0], L[i][1] + down])];
+    const pts = [
+      ...e.contour.map((i) => L[i]),
+      ...e.brow.map((i) => L[i]),
+      ...e.lower.map((i): Pt => [L[i][0], L[i][1] + down]),
+    ];
     const hull = convexHull(pts);
     const hb = boxOf(hull);
     return { poly: around(hull, 1 + (2 * C.EYES_DILATE * eye.w) / Math.max(hb.w, 1)), feather: eye.w * C.EYES_FEATHER };
@@ -97,11 +114,18 @@ export function sourceToBase(session: Session, src: Face, baseFace: Face | undef
   const srcFrame = session.frames.find((f) => f.id === src.frameId)!;
   const global = compose(invert(base.toRef), srcFrame.toRef);
   if (!baseFace) return global;
-  const fit = fitSimilarity(RIGID.map((i) => src.landmarks[i]), RIGID.map((i) => baseFace.landmarks[i]));
+  const fit = fitSimilarity(
+    RIGID.map((i) => src.landmarks[i]),
+    RIGID.map((i) => baseFace.landmarks[i]),
+  );
   return isFinite(fit.rms) ? fit.m : global;
 }
 
-interface Plan { Ts: Mat3; mapped: Pt[]; roi: Box }
+interface Plan {
+  Ts: Mat3;
+  mapped: Pt[];
+  roi: Box;
+}
 
 /** Where a pick lands in the (scaled) base canvas. */
 export function planPick(session: Session, pick: Pick, scale: number, W: number, H: number): Plan {
@@ -129,7 +153,12 @@ export class Compositor {
   private baseCopy: OffscreenCanvas | null = null;
   private applied = new Map<string, { key: string; roi: Box }>();
 
-  constructor(readonly baseId: string, readonly scale: number, base: ImageBitmap, restorable: boolean) {
+  constructor(
+    readonly baseId: string,
+    readonly scale: number,
+    base: ImageBitmap,
+    restorable: boolean,
+  ) {
     this.canvas = new OffscreenCanvas(base.width, base.height);
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
     this.ctx.drawImage(base, 0, 0);
@@ -139,8 +168,13 @@ export class Compositor {
     }
   }
 
-  async update(session: Session, picks: Record<string, Pick>, opts: { cv: CV | null; source: FrameSource; release?: (id: string, b: ImageBitmap) => void }) {
-    const W = this.canvas.width, H = this.canvas.height;
+  async update(
+    session: Session,
+    picks: Record<string, Pick>,
+    opts: { cv: CV | null; source: FrameSource; release?: (id: string, b: ImageBitmap) => void },
+  ) {
+    const W = this.canvas.width,
+      H = this.canvas.height;
     const order = new Map(session.people.map((p, i) => [p.id, i]));
     const want = new Map<string, { pick: Pick; plan: Plan }>();
     for (const p of Object.values(picks)) {
@@ -154,7 +188,10 @@ export class Compositor {
       dirty.push(a.roi);
     }
     for (const [id, w] of want) {
-      if (this.applied.get(id)?.key !== key(w.pick)) { dirty.push(w.plan.roi); redo.add(id); }
+      if (this.applied.get(id)?.key !== key(w.pick)) {
+        dirty.push(w.plan.roi);
+        redo.add(id);
+      }
     }
     // pull in unchanged picks that overlap a dirty region, until stable
     for (let grew = true; grew;) {
@@ -192,7 +229,11 @@ export class Compositor {
   }
 }
 
-export async function renderComposite(session: Session, picks: Record<string, Pick>, opts: RenderOpts): Promise<OffscreenCanvas> {
+export async function renderComposite(
+  session: Session,
+  picks: Record<string, Pick>,
+  opts: RenderOpts,
+): Promise<OffscreenCanvas> {
   const comp = new Compositor(session.baseFrameId, opts.scale, opts.base, false);
   opts.releaseBase?.();
   await comp.update(session, picks, opts);
@@ -200,9 +241,14 @@ export async function renderComposite(session: Session, picks: Record<string, Pi
 }
 
 function expand(b: Box, k: number, W: number, H: number): Box {
-  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, w = b.w * k, h = b.h * k;
-  const x0 = Math.max(0, Math.floor(cx - w / 2)), y0 = Math.max(0, Math.floor(cy - h / 2));
-  const x1 = Math.min(W, Math.ceil(cx + w / 2)), y1 = Math.min(H, Math.ceil(cy + h / 2));
+  const cx = b.x + b.w / 2,
+    cy = b.y + b.h / 2,
+    w = b.w * k,
+    h = b.h * k;
+  const x0 = Math.max(0, Math.floor(cx - w / 2)),
+    y0 = Math.max(0, Math.floor(cy - h / 2));
+  const x1 = Math.min(W, Math.ceil(cx + w / 2)),
+    y1 = Math.min(H, Math.ceil(cy + h / 2));
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
@@ -211,9 +257,15 @@ const LANCZOS_MARGIN = 4;
 /** Lanczos warp of only the source region the ROI needs; alpha marks where the source covers the ROI. */
 function warpPatch(cv: CV, srcBmp: ImageBitmap, Ts: Mat3, roi: Box): ImageData {
   const inv = invert(Ts);
-  const corners = applyAll(inv, [[roi.x, roi.y], [roi.x + roi.w, roi.y], [roi.x, roi.y + roi.h], [roi.x + roi.w, roi.y + roi.h]]);
+  const corners = applyAll(inv, [
+    [roi.x, roi.y],
+    [roi.x + roi.w, roi.y],
+    [roi.x, roi.y + roi.h],
+    [roi.x + roi.w, roi.y + roi.h],
+  ]);
   const bb = boxOf(corners);
-  const sx = Math.max(0, Math.floor(bb.x) - LANCZOS_MARGIN), sy = Math.max(0, Math.floor(bb.y) - LANCZOS_MARGIN);
+  const sx = Math.max(0, Math.floor(bb.x) - LANCZOS_MARGIN),
+    sy = Math.max(0, Math.floor(bb.y) - LANCZOS_MARGIN);
   const sw = Math.min(srcBmp.width, Math.ceil(bb.x + bb.w) + LANCZOS_MARGIN) - sx;
   const sh = Math.min(srcBmp.height, Math.ceil(bb.y + bb.h) + LANCZOS_MARGIN) - sy;
   if (sw < 2 || sh < 2) return new ImageData(roi.w, roi.h);
@@ -225,21 +277,45 @@ function warpPatch(cv: CV, srcBmp: ImageBitmap, Ts: Mat3, roi: Box): ImageData {
     const src = t.add(cv.matFromImageData(img));
     const dst = t.add(new cv.Mat());
     // crop coords → ROI coords
-    const M = t.add(cv.matFromArray(2, 3, cv.CV_64F, [
-      Ts[0], Ts[1], Ts[0] * sx + Ts[1] * sy + Ts[2] - roi.x,
-      Ts[3], Ts[4], Ts[3] * sx + Ts[4] * sy + Ts[5] - roi.y,
-    ]));
-    cv.warpAffine(src, dst, M, new cv.Size(roi.w, roi.h), cv.INTER_LANCZOS4, cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 0));
+    const M = t.add(
+      cv.matFromArray(2, 3, cv.CV_64F, [
+        Ts[0],
+        Ts[1],
+        Ts[0] * sx + Ts[1] * sy + Ts[2] - roi.x,
+        Ts[3],
+        Ts[4],
+        Ts[3] * sx + Ts[4] * sy + Ts[5] - roi.y,
+      ]),
+    );
+    cv.warpAffine(
+      src,
+      dst,
+      M,
+      new cv.Size(roi.w, roi.h),
+      cv.INTER_LANCZOS4,
+      cv.BORDER_CONSTANT,
+      new cv.Scalar(0, 0, 0, 0),
+    );
     return new ImageData(new Uint8ClampedArray(dst.data), roi.w, roi.h);
   });
 }
 
 function withMatsSync<T>(fn: (t: Tracker) => T): T {
   const t = new Tracker();
-  try { return fn(t); } finally { t.dispose(); }
+  try {
+    return fn(t);
+  } finally {
+    t.dispose();
+  }
 }
 
-async function swapOne(cv: CV, ctx: OffscreenCanvasRenderingContext2D, srcBmp: ImageBitmap, plan: Plan, mode: 'face' | 'eyes') {
+async function swapOne(
+  cv: CV,
+  ctx: OffscreenCanvasRenderingContext2D,
+  srcBmp: ImageBitmap,
+  plan: Plan,
+  mode: 'face' | 'eyes',
+) {
   const { Ts, mapped: srcLm, roi } = plan;
   const polys = maskPolygons(srcLm, mode);
   if (roi.w < 8 || roi.h < 8) return;
@@ -287,9 +363,19 @@ function odd(n: number): number {
   return k % 2 ? k : k + 1;
 }
 
-function blendRoi(cv: CV, t: Tracker, baseData: ImageData, patchData: ImageData, maskData: ImageData, feather: number, skinData?: ImageData): ImageData {
-  const w = baseData.width, h = baseData.height;
-  const baseRGB = t.add(new cv.Mat()), patchRGB = t.add(new cv.Mat());
+function blendRoi(
+  cv: CV,
+  t: Tracker,
+  baseData: ImageData,
+  patchData: ImageData,
+  maskData: ImageData,
+  feather: number,
+  skinData?: ImageData,
+): ImageData {
+  const w = baseData.width,
+    h = baseData.height;
+  const baseRGB = t.add(new cv.Mat()),
+    patchRGB = t.add(new cv.Mat());
   cv.cvtColor(t.add(cv.matFromImageData(baseData)), baseRGB, cv.COLOR_RGBA2RGB);
   const patchRGBA = t.add(cv.matFromImageData(patchData));
   cv.cvtColor(patchRGBA, patchRGB, cv.COLOR_RGBA2RGB);
@@ -337,10 +423,14 @@ function blendRoi(cv: CV, t: Tracker, baseData: ImageData, patchData: ImageData,
 }
 
 function matchColors(cv: CV, t: Tracker, base: CV, patch: CV, ring: CV) {
-  const labB = t.add(new cv.Mat()), labP = t.add(new cv.Mat());
+  const labB = t.add(new cv.Mat()),
+    labP = t.add(new cv.Mat());
   cv.cvtColor(base, labB, cv.COLOR_RGB2Lab);
   cv.cvtColor(patch, labP, cv.COLOR_RGB2Lab);
-  const mb = t.add(new cv.Mat()), sb = t.add(new cv.Mat()), mp = t.add(new cv.Mat()), sp = t.add(new cv.Mat());
+  const mb = t.add(new cv.Mat()),
+    sb = t.add(new cv.Mat()),
+    mp = t.add(new cv.Mat()),
+    sp = t.add(new cv.Mat());
   cv.meanStdDev(labB, mb, sb, ring);
   cv.meanStdDev(labP, mp, sp, ring);
   const planes = t.add(new cv.MatVector());
@@ -359,12 +449,15 @@ function matchColors(cv: CV, t: Tracker, base: CV, patch: CV, ring: CV) {
 
 function laplacianBlend(cv: CV, t: Tracker, a8: CV, b8: CV, mask: CV): CV {
   const levels = Math.max(1, Math.min(C.PYRAMID_LEVELS, Math.floor(Math.log2(Math.min(a8.cols, a8.rows))) - 2));
-  const a = t.add(new cv.Mat()), b = t.add(new cv.Mat());
+  const a = t.add(new cv.Mat()),
+    b = t.add(new cv.Mat());
   a8.convertTo(a, cv.CV_32FC3);
   b8.convertTo(b, cv.CV_32FC3);
   const m3 = t.add(new cv.Mat());
   const mv = t.add(new cv.MatVector());
-  mv.push_back(mask); mv.push_back(mask); mv.push_back(mask);
+  mv.push_back(mask);
+  mv.push_back(mask);
+  mv.push_back(mask);
   cv.merge(mv, m3);
 
   const gauss = (src: CV): CV[] => {
@@ -388,12 +481,16 @@ function laplacianBlend(cv: CV, t: Tracker, a8: CV, b8: CV, mask: CV): CV {
     l.push(g[levels]);
     return l;
   };
-  const la = lap(gauss(a)), lb = lap(gauss(b)), gm = gauss(m3);
+  const la = lap(gauss(a)),
+    lb = lap(gauss(b)),
+    gm = gauss(m3);
   const blended: CV[] = la.map((_, i) => {
     const inv = t.add(new cv.Mat());
     const ones = t.add(new cv.Mat(gm[i].rows, gm[i].cols, gm[i].type(), new cv.Scalar(1, 1, 1)));
     cv.subtract(ones, gm[i], inv);
-    const x = t.add(new cv.Mat()), y = t.add(new cv.Mat()), r = t.add(new cv.Mat());
+    const x = t.add(new cv.Mat()),
+      y = t.add(new cv.Mat()),
+      r = t.add(new cv.Mat());
     cv.multiply(la[i], inv, x);
     cv.multiply(lb[i], gm[i], y);
     cv.add(x, y, r);

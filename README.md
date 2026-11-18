@@ -6,7 +6,7 @@ Runs entirely in the browser (PWA, no backend). Deployed to GitHub Pages.
 
 ## Develop
 
-Open the folder in the devcontainer (VS Code: *Dev Containers: Reopen in Container*), then:
+Open the folder in the devcontainer (VS Code: _Dev Containers: Reopen in Container_), then:
 
 ```sh
 npm run dev         # vite dev server (5173)

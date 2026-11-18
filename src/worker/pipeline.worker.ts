@@ -22,7 +22,12 @@ installImportScripts();
 let baseUrl = '/';
 type Emit = (e: PipelineEvent) => void;
 
-interface Meta { file: { name: string; blob: Blob }; exif: Record<string, unknown>; time: number; quality: number }
+interface Meta {
+  file: { name: string; blob: Blob };
+  exif: Record<string, unknown>;
+  time: number;
+  quality: number;
+}
 
 function jsonSafe(o: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -38,7 +43,9 @@ async function readMeta(file: { name: string; blob: Blob }, order: number): Prom
   let exif: Record<string, unknown> = {};
   try {
     exif = (await exifr.parse(file.blob, true)) ?? {};
-  } catch { /* no EXIF */ }
+  } catch {
+    /* no EXIF */
+  }
   const dt = exif.DateTimeOriginal;
   const sub = Number(exif.SubSecTimeOriginal ?? 0) / 1000 || 0;
   const time = dt instanceof Date ? dt.getTime() + sub * 1000 : order;
@@ -59,8 +66,15 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
   const n = metas.length;
 
   const frames: Frame[] = metas.map((m, i) => ({
-    id: `f${i}`, name: m.file.name, blobKey: frameKey(`f${i}`), width: 0, height: 0,
-    toRef: [1, 0, 0, 0, 1, 0, 0, 0, 1], alignInliers: 0, exif: m.exif, jpegQuality: m.quality,
+    id: `f${i}`,
+    name: m.file.name,
+    blobKey: frameKey(`f${i}`),
+    width: 0,
+    height: 0,
+    toRef: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    alignInliers: 0,
+    exif: m.exif,
+    jpegQuality: m.quality,
   }));
   const faces: Record<string, Face> = {};
   const feats: AlignFeatures[] = [];
@@ -87,27 +101,59 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
       }
       raw.splice(0, raw.length, ...dropSmallOutliers(raw));
       raw.sort((a, b) => a.box.x - b.box.x);
-      prevBoxes = raw.map((r) => ({ x: r.box.x * work.s, y: r.box.y * work.s, w: r.box.w * work.s, h: r.box.h * work.s }));
+      prevBoxes = raw.map((r) => ({
+        x: r.box.x * work.s,
+        y: r.box.y * work.s,
+        w: r.box.w * work.s,
+        h: r.box.h * work.s,
+      }));
       const ids: string[] = [];
       for (let k = 0; k < raw.length; k++) {
         const r = raw[k];
         const id = `${frame.id}:${k}`;
         const box = r.box;
         faces[id] = {
-          id, frameId: frame.id, landmarks: r.landmarks, refLandmarks: r.landmarks, box, refBox: box,
-          blend: r.blend, pose: r.pose, sharpness: sharpnessOf(bmp, box), score: { ...blankScore }, thumbKey: thumbKey(id),
+          id,
+          frameId: frame.id,
+          landmarks: r.landmarks,
+          refLandmarks: r.landmarks,
+          box,
+          refBox: box,
+          blend: r.blend,
+          pose: r.pose,
+          sharpness: sharpnessOf(bmp, box),
+          score: { ...blankScore },
+          thumbKey: thumbKey(id),
         };
         ids.push(id);
         await putBlob(thumbKey(id), await faceThumb(bmp, box));
         const sc = scoreFace(r.blend, r.pose, 1);
-        emit({ type: 'thumb', faceId: id, frameId: frame.id, blink: sc.eyes < C.BLINK_THRESHOLD, away: sc.gaze < 0.5 || sc.pose < 0.4, funny: funnyPenalty(r.blend) > 0 });
+        emit({
+          type: 'thumb',
+          faceId: id,
+          frameId: frame.id,
+          blink: sc.eyes < C.BLINK_THRESHOLD,
+          away: sc.gaze < 0.5 || sc.pose < 0.4,
+          funny: funnyPenalty(r.blend) > 0,
+        });
       }
       const ft = fitSize(bmp.width, bmp.height, C.THUMB_PX);
-      await putBlob(fthumbKey(frame.id), await scaledCanvas(bmp, ft.w, ft.h).convertToBlob({ type: 'image/jpeg', quality: C.THUMB_QUALITY }));
+      await putBlob(
+        fthumbKey(frame.id),
+        await scaledCanvas(bmp, ft.w, ft.h).convertToBlob({ type: 'image/jpeg', quality: C.THUMB_QUALITY }),
+      );
       emit({ type: 'detected', frame: i + 1, total: n, faces: ids.length });
       const a = fitSize(bmp.width, bmp.height, C.ALIGN_LONG_EDGE);
       const ac = scaledCanvas(bmp, a.w, a.h);
-      feats.push({ w: a.w, h: a.h, gray: toGray(ac), masks: maskBoxes(ids.map((id) => faces[id].box), a.s) });
+      feats.push({
+        w: a.w,
+        h: a.h,
+        gray: toGray(ac),
+        masks: maskBoxes(
+          ids.map((id) => faces[id].box),
+          a.s,
+        ),
+      });
     } finally {
       bmp.close();
     }
@@ -150,15 +196,30 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
     const mine = Object.values(faces).filter((f) => f.frameId === frames[i].id);
     const current = scoreAlignment(frames[i].toRef, mine, refFaces);
     const byFaces = alignByFaces(mine, refFaces, frames[i].toRef);
-    const better = byFaces && (byFaces.matched > current.matched || (byFaces.matched === current.matched && byFaces.err < current.err));
+    const better =
+      byFaces &&
+      (byFaces.matched > current.matched || (byFaces.matched === current.matched && byFaces.err < current.err));
     if (better) {
       frames[i].toRef = byFaces.m;
       frames[i].alignMethod = 'faces';
-      emit({ type: 'aligned', frame: i + 1, total: n, inliers: frames[i].alignInliers, byFaces: { matched: byFaces.matched, of: mine.length } });
+      emit({
+        type: 'aligned',
+        frame: i + 1,
+        total: n,
+        inliers: frames[i].alignInliers,
+        byFaces: { matched: byFaces.matched, of: mine.length },
+      });
     } else {
       frames[i].alignMethod = 'orb';
       if (!orb.has(i)) emit({ type: 'warn', message: `Photo ${i + 1}: could not align, using identity` });
-      else emit({ type: 'aligned', frame: i + 1, total: n, inliers: frames[i].alignInliers, fallback: orb.get(i)!.fallback });
+      else
+        emit({
+          type: 'aligned',
+          frame: i + 1,
+          total: n,
+          inliers: frames[i].alignInliers,
+          fallback: orb.get(i)!.fallback,
+        });
     }
   }
   frames[refIdx].alignInliers = Math.max(0, ...frames.map((f) => f.alignInliers)) + 1;
@@ -171,10 +232,19 @@ async function run(files: { name: string; blob: Blob }[], emit: Emit): Promise<S
 
   // Photos where people moved too much to line up with the rest can't be merged cleanly: leave them out.
   const refCount = refFaces.length;
-  const lined = frames.map((f, i) => (i === refIdx || !refCount ? 1 : scoreAlignment(f.toRef, Object.values(faces).filter((x) => x.frameId === f.id), refFaces).matched / refCount));
+  const lined = frames.map((f, i) =>
+    i === refIdx || !refCount
+      ? 1
+      : scoreAlignment(
+          f.toRef,
+          Object.values(faces).filter((x) => x.frameId === f.id),
+          refFaces,
+        ).matched / refCount,
+  );
   const drop = new Set(frames.filter((_, i) => lined[i] < C.FRAME_MIN_ALIGNED).map((f) => f.id));
   if (drop.size && frames.length - drop.size >= C.FRAME_MIN_KEPT) {
-    for (const f of frames) if (drop.has(f.id)) emit({ type: 'warn', message: `Photo ${f.name} left out: people moved too much to line up` });
+    for (const f of frames)
+      if (drop.has(f.id)) emit({ type: 'warn', message: `Photo ${f.name} left out: people moved too much to line up` });
     for (const id of Object.keys(faces)) if (drop.has(faces[id].frameId)) delete faces[id];
     frames.splice(0, frames.length, ...frames.filter((f) => !drop.has(f.id)));
   }
@@ -222,9 +292,17 @@ async function scaledBitmap(frame: Frame, scale: number): Promise<ImageBitmap> {
   if (scale < 1) {
     // decoding straight to the target size avoids ever holding the 80MB full-resolution bitmap
     try {
-      const w = Math.round(frame.width * scale), h = Math.round(frame.height * scale);
-      return await createImageBitmap(blob, { imageOrientation: 'from-image', resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
-    } catch { /* e.g. HEIC: fall back to the full decode below */ }
+      const w = Math.round(frame.width * scale),
+        h = Math.round(frame.height * scale);
+      return await createImageBitmap(blob, {
+        imageOrientation: 'from-image',
+        resizeWidth: w,
+        resizeHeight: h,
+        resizeQuality: 'high',
+      });
+    } catch {
+      /* e.g. HEIC: fall back to the full decode below */
+    }
   }
   const full = await decodeBlob(blob, baseUrl);
   if (scale >= 1) return full;
@@ -280,7 +358,9 @@ async function exportFull(session: Session, picks: Record<string, Pick>): Promis
   try {
     const cv = await loadCV(baseUrl);
     const canvas = await renderComposite(session, picks, {
-      cv, scale: 1, base: baseBmp,
+      cv,
+      scale: 1,
+      base: baseBmp,
       source: (id) => scaledBitmap(frames.get(id)!, 1),
       release: (_id, b) => b.close(),
       releaseBase: () => baseBmp.close(),
@@ -293,7 +373,9 @@ async function exportFull(session: Session, picks: Record<string, Pick>): Promis
 }
 
 const api = {
-  init(url: string) { baseUrl = url; },
+  init(url: string) {
+    baseUrl = url;
+  },
   run: (files: { name: string; blob: Blob }[], emit: Emit) => run(files, emit),
   preview: (session: Session, picks: Record<string, Pick>, longEdge: number) =>
     serial(async () => {

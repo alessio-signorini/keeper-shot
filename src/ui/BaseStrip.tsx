@@ -18,10 +18,14 @@ function FrameThumb({ s, id, onPick }: { s: Session; id: string; onPick: (id: st
   const n = swapCount(s, id);
   return (
     <button class="shrink-0 text-center" onClick={() => onPick(id)}>
-      <span class={`block h-14 w-20 overflow-hidden rounded-lg bg-neutral-200 ${active ? 'ring-2 ring-orange-500' : ''}`}>
+      <span
+        class={`block h-14 w-20 overflow-hidden rounded-lg bg-neutral-200 ${active ? 'ring-2 ring-orange-500' : ''}`}
+      >
         {url && <img src={url} class="h-full w-full object-cover" alt="" />}
       </span>
-      <span class="text-[11px] text-neutral-600">{n} fix{n === 1 ? '' : 'es'}</span>
+      <span class="text-[11px] text-neutral-600">
+        {n} fix{n === 1 ? '' : 'es'}
+      </span>
     </button>
   );
 }

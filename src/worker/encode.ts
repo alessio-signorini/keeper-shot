@@ -16,7 +16,9 @@ function fromBinary(s: string): Uint8Array {
   return out;
 }
 
-function pad(n: number) { return String(n).padStart(2, '0'); }
+function pad(n: number) {
+  return String(n).padStart(2, '0');
+}
 function exifDate(v: unknown): string | null {
   const d = typeof v === 'string' ? new Date(v) : v instanceof Date ? v : null;
   if (!d || isNaN(d.getTime())) return null;
