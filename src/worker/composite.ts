@@ -65,6 +65,18 @@ export function maskPolygons(L: Pt[], mode: 'face' | 'eyes'): { poly: Pt[]; feat
   });
 }
 
+const LIPS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185];
+
+/** Skin-only region for colour statistics: the face shrunk inward, minus brows, eyes and mouth (very dark/bright features). */
+export function skinPolygons(L: Pt[]): { include: Pt[]; exclude: Pt[][] } {
+  const face = maskPolygons(L, 'face')[0].poly;
+  const exclude = [
+    ...EYE_SETS.map((e) => around(convexHull([...e.contour, ...e.brow].map((i) => L[i])), 1.25)),
+    around(convexHull(LIPS.map((i) => L[i])), 1.3),
+  ];
+  return { include: around(face, 0.8), exclude };
+}
+
 export type FrameSource = (frameId: string) => Promise<ImageBitmap>;
 
 export interface RenderOpts {
@@ -247,10 +259,26 @@ async function swapOne(cv: CV, ctx: OffscreenCanvasRenderingContext2D, srcBmp: I
     mctx.fill();
   }
   const maskData = mctx.getImageData(0, 0, roi.w, roi.h);
+  let skinData: ImageData | undefined;
+  if (mode === 'face') {
+    const sk = skinPolygons(srcLm);
+    mctx.fillStyle = '#000';
+    mctx.fillRect(0, 0, roi.w, roi.h);
+    const draw = (poly: Pt[], color: string) => {
+      mctx.fillStyle = color;
+      mctx.beginPath();
+      poly.forEach((p, i) => (i ? mctx.lineTo(p[0] - roi.x, p[1] - roi.y) : mctx.moveTo(p[0] - roi.x, p[1] - roi.y)));
+      mctx.closePath();
+      mctx.fill();
+    };
+    draw(sk.include, '#fff');
+    for (const e of sk.exclude) draw(e, '#000');
+    skinData = mctx.getImageData(0, 0, roi.w, roi.h);
+  }
   const baseData = ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
   const feather = Math.max(...polys.map((p) => p.feather));
 
-  const out = await withMats((t) => blendRoi(cv, t, baseData, patchData, maskData, feather));
+  const out = await withMats((t) => blendRoi(cv, t, baseData, patchData, maskData, feather, skinData));
   ctx.putImageData(out, roi.x, roi.y);
 }
 
@@ -259,7 +287,7 @@ function odd(n: number): number {
   return k % 2 ? k : k + 1;
 }
 
-function blendRoi(cv: CV, t: Tracker, baseData: ImageData, patchData: ImageData, maskData: ImageData, feather: number): ImageData {
+function blendRoi(cv: CV, t: Tracker, baseData: ImageData, patchData: ImageData, maskData: ImageData, feather: number, skinData?: ImageData): ImageData {
   const w = baseData.width, h = baseData.height;
   const baseRGB = t.add(new cv.Mat()), patchRGB = t.add(new cv.Mat());
   cv.cvtColor(t.add(cv.matFromImageData(baseData)), baseRGB, cv.COLOR_RGBA2RGB);
@@ -282,15 +310,25 @@ function blendRoi(cv: CV, t: Tracker, baseData: ImageData, patchData: ImageData,
   maskF.convertTo(maskF, cv.CV_32F, 1 / 255);
 
   // colour match in Lab over a ring just inside the mask edge
+  // face swaps measure over the skin interior (no hair, brows, eyes or mouth); eye swaps over a ring inside the mask edge
   const inner = t.add(new cv.Mat());
   cv.threshold(mask8, inner, 127, 255, cv.THRESH_BINARY);
-  const eroded = t.add(new cv.Mat());
-  const ek = odd(feather);
-  const kernel = t.add(cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(ek, ek)));
-  cv.erode(inner, eroded, kernel);
-  const ring = t.add(new cv.Mat());
-  cv.subtract(inner, eroded, ring);
-  if (cv.countNonZero(ring) > 30) matchColors(cv, t, baseRGB, patchRGB, ring);
+  let region = t.add(new cv.Mat());
+  if (skinData) {
+    const skin = t.add(new cv.Mat());
+    cv.cvtColor(t.add(cv.matFromImageData(skinData)), skin, cv.COLOR_RGBA2GRAY);
+    cv.threshold(skin, region, 127, 255, cv.THRESH_BINARY);
+    cv.bitwise_and(region, alpha, region); // alpha is 0/255: only where the source covers the ROI
+  }
+  if (!skinData || cv.countNonZero(region) < 200) {
+    const eroded = t.add(new cv.Mat());
+    const ek = odd(feather);
+    const kernel = t.add(cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(ek, ek)));
+    cv.erode(inner, eroded, kernel);
+    region = t.add(new cv.Mat());
+    cv.subtract(inner, eroded, region);
+  }
+  if (cv.countNonZero(region) > 30) matchColors(cv, t, baseRGB, patchRGB, region);
 
   const out = laplacianBlend(cv, t, baseRGB, patchRGB, maskF);
   const rgba = t.add(new cv.Mat());
