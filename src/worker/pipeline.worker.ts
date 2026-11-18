@@ -19,9 +19,20 @@ const renderer = new Renderer(() => baseUrl);
 
 type Emit = (e: PipelineEvent) => void;
 
+// Errors raised outside the awaited pipeline (library callbacks) would otherwise vanish and leave the UI waiting.
+let reportErrors: Emit | null = null;
+const reportWorkerError = (what: unknown) => {
+  const message = what instanceof Error ? what.message : String(what);
+  reportErrors?.({ type: 'warn', message });
+};
+self.addEventListener('unhandledrejection', (e) => reportWorkerError(e.reason));
+self.addEventListener('error', (e) => reportWorkerError(e.error ?? e.message));
+
 /** Analyse a burst end to end. Stores originals, thumbnails and the session in IndexedDB as it goes. */
 async function analyzeBurst(files: InputFile[], emit: Emit): Promise<Session> {
+  reportErrors = emit;
   renderer.reset();
+  emit({ type: 'status', message: 'Reading photos…' });
   await clearAll();
   const infos = await ingestFiles(files);
   const frames = infos.map(newFrame);

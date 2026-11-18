@@ -34,7 +34,9 @@ export async function detectPass(
   emit: (e: PipelineEvent) => void,
   progressSpan: number,
 ): Promise<DetectPassResult> {
+  emit({ type: 'status', message: 'Loading face detector…' });
   await initDetector(baseUrl);
+  emit({ type: 'status', message: 'Face detector ready, decoding photo 1…' });
   const faces: Record<string, Face> = {};
   const alignFeatures: AlignFeatures[] = [];
   const n = frames.length;

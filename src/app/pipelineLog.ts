@@ -15,6 +15,8 @@ export function describeEvent(e: PipelineEvent): string | null {
       return `Grouped ${e.people} people across ${e.frames} photos`;
     case 'base':
       return `Best base: photo ${e.frame} — needs ${e.swaps} fix${e.swaps === 1 ? '' : 'es'}`;
+    case 'status':
+      return e.message;
     case 'warn':
       return `⚠ ${e.message}`;
     case 'thumb':

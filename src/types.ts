@@ -116,5 +116,6 @@ export type PipelineEvent =
     }
   | { type: 'grouped'; people: number; frames: number; session: Session }
   | { type: 'base'; frame: number; swaps: number }
+  | { type: 'status'; message: string }
   | { type: 'warn'; message: string }
   | { type: 'progress'; percent: number };
