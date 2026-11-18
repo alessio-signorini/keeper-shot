@@ -43,6 +43,8 @@ export function Review() {
   const [open, setOpen] = useState<string | null>(null);
   const [cursor, setCursor] = useState(-1);
   const [fit, setFit] = useState({ w: 0, h: 0 });
+  const pzRef = useRef<ReturnType<typeof Panzoom> | null>(null);
+  const [overlays, setOverlays] = useState(true);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
 
   const base = s.frames.find((f) => f.id === s.baseFrameId)!;
@@ -61,10 +63,12 @@ export function Review() {
 
   useEffect(() => {
     const el = stage.current!;
-    const pz = Panzoom(el, { maxScale: 8, minScale: 1 });
+    // zoom only: the photo itself never drags; wheel/pinch zoom toward the pointer and stay inside the frame
+    const pz = Panzoom(el, { maxScale: 8, minScale: 1, disablePan: true, contain: 'outside' });
+    pzRef.current = pz;
     const parent = holder.current!;
     parent.addEventListener('wheel', pz.zoomWithWheel);
-    return () => { parent.removeEventListener('wheel', pz.zoomWithWheel); pz.destroy(); };
+    return () => { parent.removeEventListener('wheel', pz.zoomWithWheel); pz.destroy(); pzRef.current = null; };
   }, []);
 
   const bmp = comparing.value ? plain.current : previewBitmap.value;
@@ -112,6 +116,9 @@ export function Review() {
           Next to check ({amber.size})
         </button>
         <span class="flex gap-1">
+          <button class="rounded-lg border px-2.5 py-1.5 text-sm" aria-label="Zoom out" onClick={() => pzRef.current?.zoomOut()}>−</button>
+          <button class="rounded-lg border px-2.5 py-1.5 text-sm" aria-label="Zoom in" onClick={() => pzRef.current?.zoomIn()}>+</button>
+          <button class={`rounded-lg border px-2.5 py-1.5 text-sm ${overlays ? 'bg-orange-100' : ''}`} aria-pressed={overlays} title="Show or hide the face markers" aria-label="Toggle face markers" onClick={() => setOverlays(!overlays)}>◻︎</button>
           <button class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50" disabled={saving.value} onClick={() => void saveResult()}>
             {saving.value ? 'Saving…' : 'Save'}
           </button>
@@ -122,7 +129,7 @@ export function Review() {
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={up}>
         <div ref={stage} class="relative" style={{ width: `${fit.w}px`, height: `${fit.h}px` }}>
           <canvas ref={canvas} class="h-full w-full select-none" />
-          {!comparing.value && s.people.map((p) => {
+          {!comparing.value && overlays && s.people.map((p) => {
             const r = faceRect(s, p.id);
             const st = styleFor(s, p.id, amber.has(p.id));
             return (
