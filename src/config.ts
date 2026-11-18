@@ -78,6 +78,9 @@ export const POSE_RANGE_DEG = 40;
 export const JAW_OPEN_FREE = 0.5;
 export const FUNNY_FREE = 0.5;
 export const LOW_CONFIDENCE_TOTAL = 0.6;
+// Progress screen "looking away" counter (quick per-face flags before people are grouped)
+export const AWAY_GAZE = 0.5;
+export const AWAY_POSE = 0.4;
 
 // Swap
 export const EYES_MAX_DPOSE = 6;

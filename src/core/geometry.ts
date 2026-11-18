@@ -117,6 +117,44 @@ export function dist(a: Pt, b: Pt): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
 }
 
-export function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
+export function boxesOverlap(a: Box, b: Box): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/** Box scaled by `k` about its centre, snapped outward to whole pixels and clipped to a W×H canvas. */
+export function expandBox(b: Box, k: number, W: number, H: number): Box {
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const w = b.w * k;
+  const h = b.h * k;
+  const x0 = Math.max(0, Math.floor(cx - w / 2));
+  const y0 = Math.max(0, Math.floor(cy - h / 2));
+  const x1 = Math.min(W, Math.ceil(cx + w / 2));
+  const y1 = Math.min(H, Math.ceil(cy + h / 2));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Andrew's monotone chain; returns the hull counter-clockwise without repeating the first point. */
+export function convexHull(points: Pt[]): Pt[] {
+  const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const cross = (o: Pt, a: Pt, b: Pt) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: Pt[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: Pt[] = [];
+  for (const p of [...pts].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+/** Points scaled by `factor` about their centroid. */
+export function scaleAboutCentroid(pts: Pt[], factor: number): Pt[] {
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  return pts.map((p) => [cx + (p[0] - cx) * factor, cy + (p[1] - cy) * factor]);
 }

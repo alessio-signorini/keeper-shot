@@ -1,6 +1,6 @@
 import piexif from 'piexifjs';
-import { APP_NAME } from '../config';
-import type { Frame } from '../types';
+import { APP_NAME, JPEG_QUALITY_FALLBACK } from '../../config';
+import type { Frame } from '../../types';
 
 const KEEP_0TH = [271, 272]; // Make, Model
 const KEEP_EXIF = [36867, 36881, 37520, 37521, 37522, 33437, 33434, 34855, 37386, 41989, 42036, 40961]; // DateTimeOriginal, OffsetTimeOriginal, SubSec*, FNumber, ExposureTime, ISO, FocalLength, FocalLengthIn35mm, LensModel, ColorSpace
@@ -51,7 +51,7 @@ function fromParsed(exif: Record<string, unknown>): ExifDict {
 }
 
 export async function encodeJpeg(canvas: OffscreenCanvas, base: Frame, original: Blob | null): Promise<Blob> {
-  const jpeg = await canvas.convertToBlob({ type: 'image/jpeg', quality: base.jpegQuality ?? 0.92 });
+  const jpeg = await canvas.convertToBlob({ type: 'image/jpeg', quality: base.jpegQuality ?? JPEG_QUALITY_FALLBACK });
   const originalBytes = original ? new Uint8Array(await original.slice(0, 4 * 1024 * 1024).arrayBuffer()) : null;
   const dict = fromOriginal(original, originalBytes) ?? fromParsed(base.exif);
   dict['0th'][274] = 1; // orientation already baked into pixels
@@ -70,6 +70,6 @@ export async function encodeJpeg(canvas: OffscreenCanvas, base: Frame, original:
   return new Blob([fromBinary(withExif) as BlobPart], { type: 'image/jpeg' });
 }
 
-export function exportName(frameName: string): string {
-  return `${frameName.replace(/\.[^.]+$/, '')}-keepershot.jpg`;
+export function exportFileName(frameName: string): string {
+  return `${frameName.replace(/\.[^.]+$/, '')}-${APP_NAME.toLowerCase()}.jpg`;
 }

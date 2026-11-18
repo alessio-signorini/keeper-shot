@@ -1,6 +1,6 @@
 import * as C from '../config';
 import type { FaceScore } from '../types';
-import { clamp } from './geometry';
+import { clamp } from './stats';
 
 type Blend = Record<string, number>;
 const g = (b: Blend, k: string) => b[k] ?? 0;
@@ -64,4 +64,23 @@ export function normalizeSharpness(values: number[]): number[] {
 
 export function isBlink(eyes: number, eyesRef = 1): boolean {
   return eyes < C.BLINK_THRESHOLD || eyes < C.BLINK_REL * eyesRef;
+}
+
+export interface QuickFlags {
+  blink: boolean;
+  away: boolean;
+  funny: boolean;
+}
+
+/**
+ * Flags for the progress screen, computed per face as it is detected (before people are grouped, so blinks use
+ * the absolute threshold only).
+ */
+export function quickFlags(blend: Blend, pose: { yaw: number; pitch: number }): QuickFlags {
+  const s = scoreFace(blend, pose, 1);
+  return {
+    blink: s.eyes < C.BLINK_THRESHOLD,
+    away: s.gaze < C.AWAY_GAZE || s.pose < C.AWAY_POSE,
+    funny: funnyPenalty(blend) > 0,
+  };
 }

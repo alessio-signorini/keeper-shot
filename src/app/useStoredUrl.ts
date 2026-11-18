@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
-import { get } from 'idb-keyval';
+import { getBlob } from '../storage';
 
 const urls = new Map<string, string>();
 
-/** Object URL for a blob stored in IndexedDB (cached per key). */
-export function useStored(key: string): string | null {
+/** Object URL for a blob stored in IndexedDB (cached per key until `clearStoredUrls`). */
+export function useStoredUrl(key: string): string | null {
   const [url, setUrl] = useState<string | null>(urls.get(key) ?? null);
   useEffect(() => {
     let live = true;
@@ -12,7 +12,7 @@ export function useStored(key: string): string | null {
       setUrl(urls.get(key)!);
       return;
     }
-    void get<Blob>(key).then((b) => {
+    void getBlob(key).then((b) => {
       if (!b) return;
       const u = URL.createObjectURL(b);
       urls.set(key, u);

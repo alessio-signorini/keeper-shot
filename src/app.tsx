@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { APP_NAME } from './config';
-import { loadSaved, screen } from './state';
+import { loadSavedSession } from './app/actions';
+import { screen } from './app/store';
 import { Debug } from './ui/Debug';
 import { Progress } from './ui/Progress';
 import { Review } from './ui/Review';
@@ -13,7 +14,7 @@ addEventListener('hashchange', () => (hash.value = location.hash));
 export function App() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    void loadSaved().finally(() => setReady(true));
+    void loadSavedSession().finally(() => setReady(true));
   }, []);
   if (hash.value === '#debug') return <Debug />;
   if (!ready) return <div class="p-6 text-neutral-500">{APP_NAME}…</div>;

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { get } from 'idb-keyval';
-import { loadSession } from '../db';
-import { maskPolygons } from '../worker/composite';
 import { apply, center, invert } from '../core/geometry';
-import { isSwap } from '../core/select';
+import { maskPolygons } from '../core/masks';
+import { isSwap } from '../core/picks';
+import { facesOfFrame, personOfFace } from '../core/session';
+import { getBlob, loadSession } from '../storage';
 import type { Session } from '../types';
 
 type Layer = 'landmarks' | 'boxes' | 'masks' | 'matches';
@@ -16,7 +16,12 @@ export function Debug() {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    void loadSession().then((x) => x && setS(x));
+    void loadSession().then((x) => {
+      if (!x) return;
+      setS(x);
+      // frame f0 may have been left out of the session
+      if (!x.frames.some((f) => f.id === 'f0')) setFrameId(x.frames[0]?.id ?? 'f0');
+    });
   }, []);
 
   useEffect(() => {
@@ -25,7 +30,7 @@ export function Debug() {
     if (!frame) return;
     let live = true;
     void (async () => {
-      const blob = await get<Blob>(frame.blobKey);
+      const blob = await getBlob(frame.blobKey);
       if (!blob || !live) return;
       const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
       const c = canvas.current!;
@@ -34,7 +39,7 @@ export function Debug() {
       const ctx = c.getContext('2d')!;
       ctx.drawImage(bmp, 0, 0);
       bmp.close();
-      const personOf = (faceId: string) => s.people.find((p) => Object.values(p.faces).includes(faceId))?.id ?? '?';
+      const personOf = (faceId: string) => personOfFace(s.people, faceId)?.id ?? '?';
       const lw = Math.max(2, c.width / 800);
       if (on.matches && frame.matches?.length) {
         // each inlier: point in this frame → where the reference frame's point lands in this frame
@@ -53,7 +58,7 @@ export function Debug() {
           ctx.fill();
         }
       }
-      for (const face of Object.values(s.faces).filter((f) => f.frameId === frameId)) {
+      for (const face of facesOfFrame(s.faces, frameId)) {
         if (on.landmarks) {
           ctx.fillStyle = '#22d3ee';
           for (const [x, y] of face.landmarks) ctx.fillRect(x - lw / 2, y - lw / 2, lw, lw);
@@ -84,7 +89,7 @@ export function Debug() {
   }, [s, frameId, on]);
 
   if (!s) return <div class="p-4">No session found. Process a burst first.</div>;
-  const faces = Object.values(s.faces).filter((f) => f.frameId === frameId);
+  const faces = facesOfFrame(s.faces, frameId);
   const frame = s.frames.find((f) => f.id === frameId)!;
   return (
     <div class="space-y-3 p-3 text-sm">
@@ -134,7 +139,7 @@ export function Debug() {
           {faces.map((f) => (
             <tr key={f.id}>
               <td>{f.id}</td>
-              <td>{s.people.find((p) => Object.values(p.faces).includes(f.id))?.id}</td>
+              <td>{personOfFace(s.people, f.id)?.id}</td>
               {(['eyes', 'gaze', 'pose', 'smile', 'sharp', 'total'] as const).map((k) => (
                 <td key={k}>{f.score[k].toFixed(2)}</td>
               ))}

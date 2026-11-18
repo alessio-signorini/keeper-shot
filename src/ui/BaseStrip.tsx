@@ -1,5 +1,6 @@
-import { useStored } from './useStored';
-import { swapCount } from '../state';
+import { swapCountByFrame } from '../app/store';
+import { useStoredUrl } from '../app/useStoredUrl';
+import { frameThumbKey } from '../storage';
 import type { Session } from '../types';
 
 export function BaseStrip({ session, onPick }: { session: Session; onPick: (frameId: string) => void }) {
@@ -13,9 +14,9 @@ export function BaseStrip({ session, onPick }: { session: Session; onPick: (fram
 }
 
 function FrameThumb({ s, id, onPick }: { s: Session; id: string; onPick: (id: string) => void }) {
-  const url = useStored(`fthumb:${id}`);
+  const url = useStoredUrl(frameThumbKey(id));
   const active = s.baseFrameId === id;
-  const n = swapCount(s, id);
+  const n = swapCountByFrame.value.get(id) ?? 0;
   return (
     <button class="shrink-0 text-center" onClick={() => onPick(id)}>
       <span

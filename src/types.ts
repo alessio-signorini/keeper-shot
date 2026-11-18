@@ -54,7 +54,7 @@ export interface Person {
 export type SwapMode = 'eyes' | 'face';
 /** 'base' keeps the base frame's face; 'skip' pastes nothing (faceId is ''), leaving the base photo untouched there. */
 export type PickMode = SwapMode | 'base' | 'skip';
-export interface Pick {
+export interface FacePick {
   personId: string;
   faceId: string;
   mode: PickMode;
@@ -67,7 +67,7 @@ export interface Session {
   people: Person[];
   refFrameId: string;
   baseFrameId: string;
-  picks: Record<string, Pick>;
+  picks: Record<string, FacePick>;
 }
 
 export type PipelineEvent =

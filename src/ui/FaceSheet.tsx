@@ -1,38 +1,39 @@
 import { useState } from 'preact/hooks';
-import { autoMode, swapFeasibility } from '../core/select';
-import { setPick, refreshPreview, session } from '../state';
-import type { Pick, PickMode, Session, SwapMode } from '../types';
-import { useStored } from './useStored';
+import { refreshPreview, setPick } from '../app/actions';
+import { session } from '../app/store';
+import { useStoredUrl } from '../app/useStoredUrl';
+import { autoMode, swapFeasibility } from '../core/feasibility';
+import { faceInFrame, personById } from '../core/session';
+import { faceThumbKey } from '../storage';
+import type { Face, FacePick, PickMode, SwapMode } from '../types';
 
+/** The unconfirmed choice shown in the sheet (and previewed behind it). */
 interface Draft {
   faceId: string;
   mode: PickMode;
 }
 
 function Candidate({
-  s,
-  faceId,
-  draft,
+  face,
+  baseFace,
+  selected,
   onSelect,
 }: {
-  s: Session;
-  faceId: string;
-  draft: Draft;
+  face: Face;
+  baseFace: Face | undefined;
+  selected: boolean;
   onSelect: (faceId: string) => void;
 }) {
-  const url = useStored(`thumb:${faceId}`);
-  const face = s.faces[faceId];
-  const person = s.people.find((p) => Object.values(p.faces).includes(faceId))!;
-  const baseFaceId = person.faces[s.baseFrameId];
-  const isBase = faceId === baseFaceId;
-  const feas = isBase ? null : swapFeasibility(face, baseFaceId ? s.faces[baseFaceId] : undefined);
-  const risky = feas ? !feas.eyes.ok && !feas.face.ok : false;
-  const reason = feas?.face.reason ?? feas?.eyes.reason;
+  const url = useStoredUrl(faceThumbKey(face.id));
+  const isBase = face.id === baseFace?.id;
+  const feasibility = isBase ? null : swapFeasibility(face, baseFace);
+  const risky = feasibility ? !feasibility.eyes.ok && !feasibility.face.ok : false;
+  const reason = feasibility?.face.reason ?? feasibility?.eyes.reason;
   const pct = (v: number) => Math.round(v * 100);
   return (
     <button
-      onClick={() => onSelect(faceId)}
-      class={`w-28 shrink-0 rounded-xl border p-1.5 text-left ${draft.faceId === faceId ? 'border-orange-500 ring-2 ring-orange-300' : 'border-neutral-200'} ${risky ? 'opacity-60' : ''}`}
+      onClick={() => onSelect(face.id)}
+      class={`w-28 shrink-0 rounded-xl border p-1.5 text-left ${selected ? 'border-orange-500 ring-2 ring-orange-300' : 'border-neutral-200'} ${risky ? 'opacity-60' : ''}`}
     >
       <span class="block h-24 overflow-hidden rounded-lg bg-neutral-100">
         {url && <img src={url} class="h-full w-full object-cover" alt="" />}
@@ -53,9 +54,10 @@ function Candidate({
 
 export function FaceSheet({ personId, onClose }: { personId: string; onClose: () => void }) {
   const s = session.value!;
-  const person = s.people.find((p) => p.id === personId)!;
+  const person = personById(s, personId);
   const current = s.picks[personId];
-  const baseFaceId = person.faces[s.baseFrameId];
+  const baseFace = faceInFrame(person, s.baseFrameId, s.faces);
+  const baseFaceId = baseFace?.id;
   const [draft, setDraft] = useState<Draft>(
     current
       ? { faceId: current.faceId, mode: current.mode }
@@ -66,23 +68,20 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
 
   const preview = (d: Draft) => {
     setDraft(d);
-    const pick: Pick = { personId, faceId: d.faceId, mode: d.mode, auto: false };
+    const pick: FacePick = { personId, faceId: d.faceId, mode: d.mode, auto: false };
     void refreshPreview({ ...s.picks, [personId]: pick });
   };
 
   const select = (faceId: string) => {
     if (faceId === baseFaceId) return preview({ faceId, mode: 'base' });
-    const feas = swapFeasibility(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined);
-    const keep =
-      (draft.mode === 'eyes' || draft.mode === 'face') && feas[draft.mode].ok
-        ? draft.mode
-        : autoMode(s.faces[faceId], baseFaceId ? s.faces[baseFaceId] : undefined, feas);
-    preview({ faceId, mode: keep ?? 'face' }); // infeasible faces can still be forced as a face swap
+    const feasibility = swapFeasibility(s.faces[faceId], baseFace);
+    const keepMode = (draft.mode === 'eyes' || draft.mode === 'face') && feasibility[draft.mode].ok;
+    const mode = keepMode ? draft.mode : autoMode(s.faces[faceId], baseFace, feasibility);
+    preview({ faceId, mode: mode ?? 'face' }); // infeasible faces can still be forced as a face swap
   };
 
-  const sel = draft.faceId;
-  const feas =
-    sel && sel !== baseFaceId ? swapFeasibility(s.faces[sel], baseFaceId ? s.faces[baseFaceId] : undefined) : null;
+  const selected = draft.faceId;
+  const feasibility = selected && selected !== baseFaceId ? swapFeasibility(s.faces[selected], baseFace) : null;
 
   const confirm = async () => {
     await setPick({ personId, faceId: draft.faceId, mode: draft.mode, auto: false });
@@ -120,17 +119,23 @@ export function FaceSheet({ personId, onClose }: { personId: string; onClose: ()
           </button>
         )}
         {Object.values(person.faces).map((fid) => (
-          <Candidate key={fid} s={s} faceId={fid} draft={draft} onSelect={select} />
+          <Candidate
+            key={fid}
+            face={s.faces[fid]}
+            baseFace={baseFace}
+            selected={draft.faceId === fid}
+            onSelect={select}
+          />
         ))}
       </div>
       <div class="my-2 inline-flex overflow-hidden rounded-lg border text-sm">
         {(['eyes', 'face'] as SwapMode[]).map((m) => {
-          const ok = !!feas && (feas[m].ok || m === 'face');
+          const ok = !!feasibility && (feasibility[m].ok || m === 'face');
           return (
             <button
               key={m}
               disabled={!ok}
-              title={feas && !ok ? feas[m].reason : undefined}
+              title={feasibility && !ok ? feasibility[m].reason : undefined}
               class={`px-4 py-1.5 ${draft.mode === m ? 'bg-orange-500 text-white' : ''} ${ok ? '' : 'cursor-not-allowed text-neutral-300'}`}
               onClick={() => preview({ ...draft, mode: m })}
             >

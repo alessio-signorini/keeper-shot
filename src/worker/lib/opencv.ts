@@ -65,3 +65,12 @@ export async function withMats<T>(fn: (t: Tracker) => Promise<T> | T): Promise<T
     t.dispose();
   }
 }
+
+export function withMatsSync<T>(fn: (t: Tracker) => T): T {
+  const t = new Tracker();
+  try {
+    return fn(t);
+  } finally {
+    t.dispose();
+  }
+}

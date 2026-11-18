@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { APP_NAME, MAX_FILES, MIN_FILES, THUMB_PX, THUMB_QUALITY } from '../config';
-import { files, resume, savedSession, start, startOver } from '../state';
+import { resumeSession, startAnalysis, startOver } from '../app/actions';
+import { files, savedSession } from '../app/store';
 
 export function Upload() {
   const list = files.value;
@@ -54,7 +55,7 @@ export function Upload() {
         <div class="flex items-center justify-between rounded-xl bg-orange-50 p-3">
           <span class="text-sm">You have a previous session.</span>
           <span class="flex gap-2">
-            <button class="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-medium text-white" onClick={resume}>
+            <button class="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-medium text-white" onClick={resumeSession}>
               Resume
             </button>
             <button class="rounded-lg border px-3 py-1.5 text-sm" onClick={startOver}>
@@ -99,7 +100,7 @@ export function Upload() {
       <button
         class="mt-auto rounded-xl bg-orange-500 py-3 text-lg font-semibold text-white disabled:opacity-40"
         disabled={!ok}
-        onClick={start}
+        onClick={startAnalysis}
       >
         Start
       </button>

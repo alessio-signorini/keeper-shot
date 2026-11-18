@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { counters, error, feed, percent, session, startOver, thumbs } from '../state';
-import { useStored } from './useStored';
+import { startOver } from '../app/actions';
+import { counters, detectedFaces, pipelineError, progressLog, progressPercent, session } from '../app/store';
+import { useStoredUrl } from '../app/useStoredUrl';
+import { faceThumbKey } from '../storage';
 
 function Thumb({ id, blink, best }: { id: string; blink: boolean; best?: boolean }) {
-  const url = useStored(`thumb:${id}`);
+  const url = useStoredUrl(faceThumbKey(id));
   return (
     <span
       class={`relative inline-block h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100 ${best ? 'ring-4 ring-amber-400 shadow-[0_0_12px_#fbbf24]' : ''}`}
@@ -16,10 +18,10 @@ function Thumb({ id, blink, best }: { id: string; blink: boolean; best?: boolean
 
 export function Progress() {
   const feedEnd = useRef<HTMLDivElement>(null);
-  useEffect(() => feedEnd.current?.scrollIntoView({ block: 'nearest' }), [feed.value.length]);
+  useEffect(() => feedEnd.current?.scrollIntoView({ block: 'nearest' }), [progressLog.value.length]);
   const c = counters.value;
   const s = session.value;
-  const flags = new Map(thumbs.value.map((t) => [t.faceId, t]));
+  const flags = new Map(detectedFaces.value.map((t) => [t.faceId, t]));
 
   // rows: one per person once grouped, otherwise one per frame
   const rows: { key: string; ids: string[]; bestId?: string }[] = s?.people.length
@@ -29,7 +31,10 @@ export function Progress() {
         return { key: p.id, ids, bestId };
       })
     : Object.entries(
-        thumbs.value.reduce<Record<string, string[]>>((acc, t) => ((acc[t.frameId] ??= []).push(t.faceId), acc), {}),
+        detectedFaces.value.reduce<Record<string, string[]>>(
+          (acc, t) => ((acc[t.frameId] ??= []).push(t.faceId), acc),
+          {},
+        ),
       ).map(([key, ids]) => ({ key, ids }));
 
   return (
@@ -38,9 +43,9 @@ export function Progress() {
       <div
         class="h-3 overflow-hidden rounded-full bg-neutral-200"
         role="progressbar"
-        aria-valuenow={Math.round(percent.value)}
+        aria-valuenow={Math.round(progressPercent.value)}
       >
-        <div class="h-full bg-orange-500 transition-all" style={{ width: `${percent.value}%` }} />
+        <div class="h-full bg-orange-500 transition-all" style={{ width: `${progressPercent.value}%` }} />
       </div>
       <div class="grid grid-cols-4 gap-2 text-center text-sm">
         <Counter label="faces found" v={c.faces} />
@@ -59,14 +64,14 @@ export function Progress() {
         ))}
       </div>
       <div class="max-h-32 overflow-y-auto rounded-lg bg-neutral-50 p-2 text-xs text-neutral-600">
-        {feed.value.map((m, i) => (
+        {progressLog.value.map((m, i) => (
           <div key={i}>{m}</div>
         ))}
         <div ref={feedEnd} />
       </div>
-      {error.value && (
+      {pipelineError.value && (
         <div class="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          Something went wrong: {error.value}
+          Something went wrong: {pipelineError.value}
           <button class="ml-2 underline" onClick={startOver}>
             Start over
           </button>

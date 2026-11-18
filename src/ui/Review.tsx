@@ -1,65 +1,14 @@
 import Panzoom from '@panzoom/panzoom';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { applyAll, boxOf, invert } from '../core/geometry';
-import {
-  attentionPeople,
-  comparing,
-  plainBase,
-  previewBitmap,
-  saveResult,
-  saving,
-  session,
-  setBase,
-  startOver,
-} from '../state';
-import type { Session } from '../types';
+import { renderOriginalBase, saveComposite, setBase, startOver } from '../app/actions';
+import { attentionPersonIds, previewBitmap, saving, session, showingOriginal } from '../app/store';
+import { baseFrame } from '../core/session';
 import { BaseStrip } from './BaseStrip';
+import { FaceMarkers } from './FaceMarkers';
 import { FaceSheet } from './FaceSheet';
 
 const LONG_PRESS_MS = 350;
 const MOVE_SLOP = 8;
-
-function styleFor(s: Session, personId: string, amber: boolean) {
-  const pick = s.picks[personId];
-  if (amber)
-    return {
-      icon: '⚠',
-      border: pick?.mode === 'skip' ? 'border-dashed border-amber-400' : 'border-amber-400',
-      chip: 'bg-amber-400 text-black',
-    };
-  if (pick?.mode === 'eyes') return { icon: '👁', border: 'border-blue-500', chip: 'bg-blue-500 text-white' };
-  if (pick?.mode === 'face') return { icon: '🙂', border: 'border-purple-500', chip: 'bg-purple-500 text-white' };
-  if (pick?.mode === 'skip')
-    return { icon: '∅', border: 'border-dashed border-white/70', chip: 'bg-white/70 text-neutral-600' };
-  return { icon: '✓', border: 'border-white/80', chip: 'bg-white/80 text-neutral-700' };
-}
-
-/** The person's face rectangle in base-frame coordinates, as percentages of the frame. */
-function faceRect(s: Session, personId: string): { x: number; y: number; w: number; h: number } {
-  const p = s.people.find((q) => q.id === personId)!;
-  const base = s.frames.find((f) => f.id === s.baseFrameId)!;
-  const bf = p.faces[base.id];
-  const box = bf
-    ? s.faces[bf].box
-    : boxOf(
-        applyAll(
-          invert(base.toRef),
-          [
-            [0, 0],
-            [1, 1],
-          ].map(([k, l]) => {
-            const r = s.faces[Object.values(p.faces)[0]].refBox;
-            return [r.x + r.w * k, r.y + r.h * l] as [number, number];
-          }),
-        ),
-      );
-  return {
-    x: (box.x / base.width) * 100,
-    y: (box.y / base.height) * 100,
-    w: (box.w / base.width) * 100,
-    h: (box.h / base.height) * 100,
-  };
-}
 
 export function Review() {
   const s = session.value!;
@@ -74,7 +23,7 @@ export function Review() {
   const [overlays, setOverlays] = useState(true);
   const press = useRef<{ timer: number; x: number; y: number } | null>(null);
 
-  const base = s.frames.find((f) => f.id === s.baseFrameId)!;
+  const base = baseFrame(s);
   useEffect(() => {
     const parent = holder.current!;
     const measure = () => {
@@ -112,27 +61,27 @@ export function Review() {
     };
   }, []);
 
-  const bmp = comparing.value ? plain.current : previewBitmap.value;
+  const bmp = showingOriginal.value ? plain.current : previewBitmap.value;
   useEffect(() => {
     const c = canvas.current;
-    const b = comparing.value && plain.current ? plain.current : previewBitmap.value;
+    const b = showingOriginal.value && plain.current ? plain.current : previewBitmap.value;
     if (!c || !b) return;
     c.width = b.width;
     c.height = b.height;
     c.getContext('2d')!.drawImage(b, 0, 0);
-  }, [bmp, comparing.value, previewBitmap.value]);
+  }, [bmp, showingOriginal.value, previewBitmap.value]);
 
   const down = (e: PointerEvent) => {
     const t = window.setTimeout(async () => {
       plain.current?.close();
-      plain.current = await plainBase();
-      comparing.value = true;
+      plain.current = await renderOriginalBase();
+      showingOriginal.value = true;
     }, LONG_PRESS_MS);
     press.current = { timer: t, x: e.clientX, y: e.clientY };
   };
   const move = (e: PointerEvent) => {
     const p = press.current;
-    if (p && !comparing.value && Math.hypot(e.clientX - p.x, e.clientY - p.y) > MOVE_SLOP) {
+    if (p && !showingOriginal.value && Math.hypot(e.clientX - p.x, e.clientY - p.y) > MOVE_SLOP) {
       clearTimeout(p.timer);
       press.current = null;
     }
@@ -140,10 +89,10 @@ export function Review() {
   const up = () => {
     if (press.current) clearTimeout(press.current.timer);
     press.current = null;
-    comparing.value = false;
+    showingOriginal.value = false;
   };
 
-  const amber = new Set(attentionPeople(s));
+  const amber = new Set(attentionPersonIds.value);
   const next = () => {
     const ids = [...amber];
     if (!ids.length) return;
@@ -192,7 +141,7 @@ export function Review() {
           <button
             class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             disabled={saving.value}
-            onClick={() => void saveResult()}
+            onClick={() => void saveComposite()}
           >
             {saving.value ? 'Saving…' : 'Save'}
           </button>
@@ -201,7 +150,7 @@ export function Review() {
             disabled={saving.value}
             title="Download the file"
             aria-label="Download"
-            onClick={() => void saveResult('download')}
+            onClick={() => void saveComposite('download')}
           >
             ⬇
           </button>
@@ -219,28 +168,8 @@ export function Review() {
       >
         <div ref={stage} class="relative" style={{ width: `${fit.w}px`, height: `${fit.h}px` }}>
           <canvas ref={canvas} class="h-full w-full select-none" />
-          {!comparing.value &&
-            overlays &&
-            s.people.map((p) => {
-              const r = faceRect(s, p.id);
-              const st = styleFor(s, p.id, amber.has(p.id));
-              return (
-                <button
-                  key={p.id}
-                  aria-label={`Person ${p.id}`}
-                  class={`absolute rounded-md border-2 ${st.border}`}
-                  style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}
-                  onClick={() => setOpen(p.id)}
-                >
-                  <span
-                    class={`absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full text-[11px] shadow ${st.chip}`}
-                  >
-                    {st.icon}
-                  </span>
-                </button>
-              );
-            })}
-          {comparing.value && (
+          {!showingOriginal.value && overlays && <FaceMarkers session={s} attention={amber} onOpen={setOpen} />}
+          {showingOriginal.value && (
             <div class="absolute left-2 top-2 rounded bg-black/60 px-2 py-1 text-xs text-white">Original</div>
           )}
         </div>

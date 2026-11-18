@@ -1,20 +1,26 @@
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
-import * as C from '../config';
-import { boxOf, iou } from '../core/geometry';
-import { poseFromMatrix } from '../core/pose';
-import { implausibleGaze } from '../core/faceFilters';
-import { tilePlan } from '../core/tiles';
-import type { Box, Pt } from '../types';
+import * as C from '../../config';
+import { boxOf, iou } from '../../core/geometry';
+import { poseFromMatrix } from '../../core/pose';
+import { implausibleGaze } from '../../core/detectionFilters';
+import { tilePlan } from '../../core/detectionTiles';
+import type { Box, Pt } from '../../types';
 
-export interface RawFace {
-  landmarks: Pt[]; // work-resolution pixel coords
+export interface DetectedFace {
+  /** pixel coords of the image the face was detected in */
+  landmarks: Pt[];
   blend: Record<string, number>;
   pose: { yaw: number; pitch: number; roll: number };
   box: Box;
 }
 
-// `scanner` only finds faces across hundreds of tiles; blendshapes and head pose are expensive per face, so only
-// `landmarker` computes them, once per face, on the full-resolution crop (see refineFace).
+/** MediaPipe's default presence threshold, used while scanning tiles. */
+const SCAN_PRESENCE = 0.5;
+/** Faces within this many px of an interior tile edge are treated as cut off by the tile. */
+const TILE_EDGE_MARGIN = 3;
+
+// The 'scan' mode only finds faces across hundreds of tiles; blendshapes and head pose are expensive per face, so
+// only the 'full' mode computes them, once per face, on the full-resolution crop (see refineFace).
 let landmarker: FaceLandmarker | null = null;
 let mode: 'scan' | 'full' | null = null;
 
@@ -26,7 +32,7 @@ async function setMode(m: 'scan' | 'full'): Promise<void> {
     outputFaceBlendshapes: full,
     outputFacialTransformationMatrixes: full,
     minFaceDetectionConfidence: full ? C.MIN_FACE_CONFIDENCE : C.SCAN_CONFIDENCE,
-    minFacePresenceConfidence: full ? C.REFINE_PRESENCE : 0.5,
+    minFacePresenceConfidence: full ? C.REFINE_PRESENCE : SCAN_PRESENCE,
   });
   mode = m;
 }
@@ -52,9 +58,16 @@ export function closeDetector(): void {
   mode = null;
 }
 
-function run(image: ImageBitmap, offX: number, offY: number, w: number, h: number, minFace = C.MIN_FACE_PX): RawFace[] {
+function runLandmarker(
+  image: ImageBitmap,
+  offX: number,
+  offY: number,
+  w: number,
+  h: number,
+  minFace = C.MIN_FACE_PX,
+): DetectedFace[] {
   const res = landmarker!.detect(image);
-  const out: RawFace[] = [];
+  const out: DetectedFace[] = [];
   res.faceLandmarks.forEach((lm, i) => {
     const landmarks = lm.map((p): Pt => [p.x * w + offX, p.y * h + offY]);
     const blend: Record<string, number> = {};
@@ -79,34 +92,33 @@ const same = (a: Box, b: Box) => {
  * faces covering ~1/6 of it, so the frame is scanned with overlapping tiles at several scales (see core/tiles).
  * `region` limits the fine scales to where the group was found in the previous frame.
  */
-export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promise<RawFace[]> {
+export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promise<DetectedFace[]> {
   const w = canvas.width,
     h = canvas.height;
-  const out: RawFace[] = [];
-  const add = (fs: RawFace[]) => {
+  const out: DetectedFace[] = [];
+  const add = (fs: DetectedFace[]) => {
     for (const f of fs) if (!out.some((m) => same(m.box, f.box))) out.push(f);
   };
 
   await setMode('scan');
   const whole = await createImageBitmap(canvas);
   try {
-    add(run(whole, 0, 0, w, h));
+    add(runLandmarker(whole, 0, 0, w, h));
   } finally {
     whole.close();
   }
 
-  const edge = 3;
   for (const t of tilePlan(w, h, region)) {
     const tile = await createImageBitmap(canvas, t.x, t.y, t.w, t.h);
     try {
       // faces cut by an interior tile edge are partial; an overlapping tile sees them whole
       add(
-        run(tile, t.x, t.y, t.w, t.h).filter(
+        runLandmarker(tile, t.x, t.y, t.w, t.h).filter(
           (f) =>
-            (t.x === 0 || f.box.x > t.x + edge) &&
-            (t.x + t.w >= w || f.box.x + f.box.w < t.x + t.w - edge) &&
-            (t.y === 0 || f.box.y > t.y + edge) &&
-            (t.y + t.h >= h || f.box.y + f.box.h < t.y + t.h - edge),
+            (t.x === 0 || f.box.x > t.x + TILE_EDGE_MARGIN) &&
+            (t.x + t.w >= w || f.box.x + f.box.w < t.x + t.w - TILE_EDGE_MARGIN) &&
+            (t.y === 0 || f.box.y > t.y + TILE_EDGE_MARGIN) &&
+            (t.y + t.h >= h || f.box.y + f.box.h < t.y + t.h - TILE_EDGE_MARGIN),
         ),
       );
     } finally {
@@ -116,7 +128,7 @@ export async function detectFaces(canvas: OffscreenCanvas, region?: Box): Promis
   return out;
 }
 
-async function detectInCrop(src: ImageBitmap, box: Box, context: number, full: boolean): Promise<RawFace | null> {
+async function detectInCrop(src: ImageBitmap, box: Box, context: number): Promise<DetectedFace | null> {
   const side = Math.min(Math.max(box.w, box.h) * context, src.width, src.height);
   const cx = box.x + box.w / 2,
     cy = box.y + box.h / 2;
@@ -125,19 +137,19 @@ async function detectInCrop(src: ImageBitmap, box: Box, context: number, full: b
   const sw = Math.round(side),
     sh = Math.round(side);
   const out = Math.max(C.REFINE_MIN_PX, Math.min(sw, C.REFINE_PX));
-  await setMode(full ? 'full' : 'scan');
+  await setMode('full');
   const crop = await createImageBitmap(src, sx, sy, sw, sh, {
     resizeWidth: out,
     resizeHeight: out,
     resizeQuality: 'high',
   });
-  let found: RawFace[];
+  let found: DetectedFace[];
   try {
-    found = run(crop, sx, sy, sw, sh, 0);
+    found = runLandmarker(crop, sx, sy, sw, sh, 0);
   } finally {
     crop.close();
   }
-  let best: RawFace | null = null,
+  let best: DetectedFace | null = null,
     bestIou = C.REFINE_MIN_IOU;
   for (const f of found) {
     const v = iou(f.box, box);
@@ -153,45 +165,7 @@ async function detectInCrop(src: ImageBitmap, box: Box, context: number, full: b
  * Re-run the landmarker on a full-resolution crop around a candidate (full-res box). Verifies the candidate is a
  * real face (most tile hits on hands or props vanish) and yields landmarks/blendshapes from far more pixels.
  */
-export async function refineFace(src: ImageBitmap, box: Box): Promise<RawFace | null> {
-  const face = await detectInCrop(src, box, C.REFINE_CONTEXT, true);
+export async function refineFace(src: ImageBitmap, box: Box): Promise<DetectedFace | null> {
+  const face = await detectInCrop(src, box, C.REFINE_CONTEXT);
   return face && !implausibleGaze(face.blend) ? face : null;
-}
-
-/** Variance of the 4-neighbour Laplacian on a grayscale crop resized to SHARPNESS_CROP_PX wide. */
-export function sharpnessOf(canvas: OffscreenCanvas | ImageBitmap, box: Box): number {
-  const sw = C.SHARPNESS_CROP_PX;
-  const sh = Math.max(8, Math.round((box.h / Math.max(box.w, 1)) * sw));
-  const c = new OffscreenCanvas(sw, sh);
-  const ctx = c.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(canvas, box.x, box.y, box.w, box.h, 0, 0, sw, sh);
-  const d = ctx.getImageData(0, 0, sw, sh).data;
-  const g = new Float32Array(sw * sh);
-  for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-  let sum = 0,
-    sum2 = 0,
-    n = 0;
-  for (let y = 1; y < sh - 1; y++) {
-    for (let x = 1; x < sw - 1; x++) {
-      const i = y * sw + x;
-      const l = g[i - 1] + g[i + 1] + g[i - sw] + g[i + sw] - 4 * g[i];
-      sum += l;
-      sum2 += l * l;
-      n++;
-    }
-  }
-  const mean = sum / n;
-  return sum2 / n - mean * mean;
-}
-
-export async function faceThumb(canvas: OffscreenCanvas | ImageBitmap, box: Box): Promise<Blob> {
-  const pad = 0.25;
-  const x = Math.max(0, box.x - box.w * pad),
-    y = Math.max(0, box.y - box.h * pad);
-  const w = Math.min(canvas.width - x, box.w * (1 + 2 * pad)),
-    h = Math.min(canvas.height - y, box.h * (1 + 2 * pad));
-  const s = C.THUMB_PX / Math.max(w, h);
-  const c = new OffscreenCanvas(Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
-  c.getContext('2d')!.drawImage(canvas, x, y, w, h, 0, 0, c.width, c.height);
-  return c.convertToBlob({ type: 'image/jpeg', quality: C.THUMB_QUALITY });
 }

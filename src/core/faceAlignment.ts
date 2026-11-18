@@ -1,9 +1,9 @@
 import * as C from '../config';
-import type { Box, Mat3, Pt } from '../types';
+import type { Box, Face, Frame, Mat3, Pt } from '../types';
 import { apply, center, fitSimilarity } from './geometry';
-
-/** Eye corners, nose tip and mouth corners: stable points used to fit frame-to-frame transforms from faces. */
-export const ALIGN_LANDMARKS = [33, 133, 362, 263, 1, 61, 291];
+import { ALIGN_POINTS } from './landmarks';
+import { facesOfFrame } from './session';
+import { median } from './stats';
 
 export interface AlignFace {
   box: Box;
@@ -39,17 +39,12 @@ export function matchFaces(m: Mat3, A: AlignFace[], B: AlignFace[], tol: number)
   return out;
 }
 
-const median = (v: number[]) => {
-  const s = [...v].sort((x, y) => x - y);
-  return s.length ? s[Math.floor(s.length / 2)] : Infinity;
-};
-
 function refine(m: Mat3, A: AlignFace[], B: AlignFace[]): Mat3 {
   for (const tol of C.FACE_ALIGN_REFINE_TOLS) {
     const pairs = matchFaces(m, A, B, tol);
     if (pairs.length < C.FACE_ALIGN_MIN_FACES) break;
-    const src = pairs.flatMap((p) => ALIGN_LANDMARKS.map((i) => A[p.a].landmarks[i]));
-    const dst = pairs.flatMap((p) => ALIGN_LANDMARKS.map((i) => B[p.b].landmarks[i]));
+    const src = pairs.flatMap((p) => ALIGN_POINTS.map((i) => A[p.a].landmarks[i]));
+    const dst = pairs.flatMap((p) => ALIGN_POINTS.map((i) => B[p.b].landmarks[i]));
     const fit = fitSimilarity(src, dst);
     if (!isFinite(fit.rms)) break;
     m = fit.m;
@@ -66,7 +61,7 @@ export interface FaceAlignment {
 /** How well a transform lines up A's faces with B's faces. */
 export function scoreAlignment(m: Mat3, A: AlignFace[], B: AlignFace[]): FaceAlignment {
   const pairs = matchFaces(m, A, B, C.FACE_ALIGN_TOL);
-  return { m, matched: pairs.length, err: median(pairs.map((p) => p.d)) };
+  return { m, matched: pairs.length, err: pairs.length ? median(pairs.map((p) => p.d)) : Infinity };
 }
 
 /**
@@ -99,4 +94,50 @@ export function alignByFaces(A: AlignFace[], B: AlignFace[], seed?: Mat3): FaceA
     if (!best || r.matched > best.matched || (r.matched === best.matched && r.err < best.err)) best = r;
   }
   return best && best.matched >= C.FACE_ALIGN_MIN_FACES ? best : null;
+}
+
+/** True when `a` lines up more faces than `b`, or as many with a smaller median error. */
+export function linesUpBetter(a: FaceAlignment, b: FaceAlignment): boolean {
+  return a.matched > b.matched || (a.matched === b.matched && a.err < b.err);
+}
+
+export interface FrameTransformChoice {
+  toRef: Mat3;
+  method: 'orb' | 'faces';
+  /** set when the faces won */
+  byFaces?: FaceAlignment;
+}
+
+/**
+ * The background can align differently from the people (parallax, featureless grass): keep whichever of the
+ * background transform and the face-based one lines up more of the group's faces with the reference frame.
+ */
+export function chooseFrameTransform(
+  backgroundToRef: Mat3,
+  frameFaces: AlignFace[],
+  refFaces: AlignFace[],
+): FrameTransformChoice {
+  const current = scoreAlignment(backgroundToRef, frameFaces, refFaces);
+  const byFaces = alignByFaces(frameFaces, refFaces, backgroundToRef);
+  if (byFaces && linesUpBetter(byFaces, current)) return { toRef: byFaces.m, method: 'faces', byFaces };
+  return { toRef: backgroundToRef, method: 'orb' };
+}
+
+/**
+ * Frames where people moved too much to line up with the reference (fewer than FRAME_MIN_ALIGNED of its faces
+ * match) can't be merged cleanly. Returns their ids, or nothing if dropping them would leave fewer than FRAME_MIN_KEPT.
+ */
+export function misalignedFrames(frames: Frame[], faces: Record<string, Face>, refFrameId: string): Set<string> {
+  const refFaces = facesOfFrame(faces, refFrameId);
+  if (!refFaces.length) return new Set();
+  const drop = new Set(
+    frames
+      .filter((f) => f.id !== refFrameId)
+      .filter(
+        (f) =>
+          scoreAlignment(f.toRef, facesOfFrame(faces, f.id), refFaces).matched / refFaces.length < C.FRAME_MIN_ALIGNED,
+      )
+      .map((f) => f.id),
+  );
+  return drop.size && frames.length - drop.size >= C.FRAME_MIN_KEPT ? drop : new Set();
 }

@@ -1,7 +1,8 @@
-import * as C from '../config';
-import { apply, fitSimilarity, IDENTITY, invert, scaleMat, compose } from '../core/geometry';
-import type { Box, Mat3, Pt } from '../types';
-import { loadCV, withMats, type CV } from './cv';
+import * as C from '../../config';
+import { compose, IDENTITY, invert, scaleMat } from '../../core/geometry';
+import { ransacSimilarity } from '../../core/ransac';
+import type { Box, Mat3, Pt } from '../../types';
+import { loadCV, withMats, type CV } from './opencv';
 
 export interface AlignFeatures {
   w: number;
@@ -11,7 +12,7 @@ export interface AlignFeatures {
 }
 
 export interface AlignResult {
-  toRefFull: Mat3;
+  toRef: Mat3;
   inliers: number;
   fallback: boolean;
   identity: boolean;
@@ -51,7 +52,7 @@ interface Feat {
   kpv: CV;
 }
 
-function detect(cv: CV, f: AlignFeatures, t: { add: <T extends { delete: () => void }>(m: T) => T }): Feat {
+function orbFeatures(cv: CV, f: AlignFeatures, t: { add: <T extends { delete: () => void }>(m: T) => T }): Feat {
   const gray = t.add(cv.matFromArray(f.h, f.w, cv.CV_8UC1, f.gray as unknown as number[]));
   const mask = t.add(new cv.Mat(f.h, f.w, cv.CV_8UC1, new cv.Scalar(255)));
   for (const b of f.masks) {
@@ -76,15 +77,15 @@ function detect(cv: CV, f: AlignFeatures, t: { add: <T extends { delete: () => v
 }
 
 /** Holds the reference frame's features and aligns other frames to it. */
-export class Aligner {
+export class BackgroundAligner {
   private cv!: CV;
   private ref!: Feat;
 
-  static async create(baseUrl: string, ref: AlignFeatures): Promise<Aligner> {
-    const a = new Aligner();
+  static async create(baseUrl: string, ref: AlignFeatures): Promise<BackgroundAligner> {
+    const a = new BackgroundAligner();
     a.cv = await loadCV(baseUrl);
     await withMats((t) => {
-      const f = detect(a.cv, ref, t);
+      const f = orbFeatures(a.cv, ref, t);
       a.ref = f; // owned beyond the tracker; freed in dispose()
     });
     return a;
@@ -101,7 +102,7 @@ export class Aligner {
     const S = scaleMat(s);
     const Sinv = invert(S);
     return withMats((t) => {
-      const feat = detect(cv, frame, t);
+      const feat = orbFeatures(cv, frame, t);
       t.add(feat.des);
       t.add(feat.kpv);
       const pairs: { a: Pt; b: Pt }[] = [];
@@ -153,7 +154,7 @@ export class Aligner {
             sc <= C.ALIGN_SCALE_MAX;
           if (ok)
             return {
-              toRefFull: full(hm),
+              toRef: full(hm),
               inliers,
               fallback: false,
               identity: false,
@@ -167,7 +168,7 @@ export class Aligner {
         if (sim && sim.inliers >= C.ALIGN_MIN_INLIERS) {
           const set = new Set(sim.set);
           return {
-            toRefFull: full(sim.m),
+            toRef: full(sim.m),
             inliers: sim.inliers,
             fallback: true,
             identity: false,
@@ -175,37 +176,7 @@ export class Aligner {
           };
         }
       }
-      return { toRefFull: [...IDENTITY], inliers: 0, fallback: true, identity: true, matches: [] };
+      return { toRef: [...IDENTITY], inliers: 0, fallback: true, identity: true, matches: [] };
     });
   }
-}
-
-/** RANSAC similarity fit (fallback when the homography is implausible). */
-export function ransacSimilarity(a: Pt[], b: Pt[], iters = 500): { m: Mat3; inliers: number; set: number[] } | null {
-  const n = a.length;
-  if (n < 2) return null;
-  let best: { m: Mat3; set: number[] } | null = null;
-  let seed = 12345;
-  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
-  for (let it = 0; it < iters; it++) {
-    const i = Math.floor(rnd() * n);
-    let j = Math.floor(rnd() * n);
-    if (i === j) j = (j + 1) % n;
-    const { m, rms } = fitSimilarity([a[i], a[j]], [b[i], b[j]]);
-    if (!isFinite(rms)) continue;
-    const set: number[] = [];
-    for (let k = 0; k < n; k++) {
-      const p = apply(m, a[k]);
-      if (Math.hypot(p[0] - b[k][0], p[1] - b[k][1]) < C.RANSAC_THRESHOLD) set.push(k);
-    }
-    if (!best || set.length > best.set.length) best = { m, set };
-  }
-  if (!best || best.set.length < 2) return null;
-  const refit = fitSimilarity(
-    best.set.map((k) => a[k]),
-    best.set.map((k) => b[k]),
-  );
-  const sc = Math.hypot(refit.m[0], refit.m[3]);
-  if (sc < C.ALIGN_SCALE_MIN || sc > C.ALIGN_SCALE_MAX) return null;
-  return { m: refit.m, inliers: best.set.length, set: best.set };
 }
