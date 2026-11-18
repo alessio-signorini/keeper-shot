@@ -8,7 +8,7 @@ In the repository, set **Settings → Pages → Source = Deploy from a branch**,
 
 ## Publishing
 
-Pushes to `main` or `master` build and force-push `dist` to the `gh-pages` branch via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). CI checks (formatting, typecheck, tests) run via [`ci.yml`](../.github/workflows/ci.yml).
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) checks formatting, runs unit tests and builds (which includes typecheck) on every pull request and push. Pushes to `main` additionally publish `dist` to the `gh-pages` branch with `peaceiris/actions-gh-pages`.
 
 The site is served from the root of the custom domain `keepershot.signorini.dev` (`public/CNAME`, Vite `base: '/'`). DNS: a `CNAME` record for `keepershot` pointing to `alessio-signorini.github.io`. Set the custom domain and enable _Enforce HTTPS_ under Settings → Pages.
 
