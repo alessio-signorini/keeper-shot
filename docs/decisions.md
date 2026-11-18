@@ -79,4 +79,4 @@ The design choices currently in effect, grouped by topic. When behaviour changes
 
 ## Fixture status
 
-People found by the e2e full-pipeline test vs `expected.json` — see the latest `npm run e2e` run; update this line when it changes.
+People found by the e2e full-pipeline test vs `expected.json` (2026-11-18): big-family 47/52, family 14/14, kids 23/19, portrait 2/1. Over-splitting of moving subjects, cutouts and a few undetected faces explain the gaps. Update this line when the counts change.

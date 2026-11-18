@@ -5,4 +5,3 @@ tests/fixtures/*/*
 test-results
 playwright-report
 .DS_Store
-.scratch
