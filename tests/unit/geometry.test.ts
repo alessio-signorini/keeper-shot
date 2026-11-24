@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { apply, compose, convexHull, expandBox, fitSimilarity, invert, iou } from '../../src/core/geometry';
+import {
+  apply,
+  compose,
+  convexHull,
+  expandBox,
+  fitSimilarity,
+  IDENTITY,
+  invert,
+  iou,
+  rescaleTransform,
+} from '../../src/core/geometry';
 import type { Mat3, Pt } from '../../src/types';
 
 describe('geometry', () => {
@@ -12,6 +22,15 @@ describe('geometry', () => {
     const r = apply(compose(invert(m), m), p);
     expect(r[0]).toBeCloseTo(10);
     expect(r[1]).toBeCloseTo(20);
+  });
+  it('rescales an align-resolution transform between photos of different resolutions', () => {
+    // a 1152 px export and a 4032 px original of the same shot, both aligned at 1024 px: identical at align res
+    const s = 1024 / 1152;
+    const sRef = 1024 / 4032;
+    const m = rescaleTransform(IDENTITY, s, sRef);
+    const p = apply(m, [576, 384]);
+    expect(p[0]).toBeCloseTo(2016);
+    expect(p[1]).toBeCloseTo(1344);
   });
   it('fits a similarity exactly', () => {
     const src: Pt[] = [

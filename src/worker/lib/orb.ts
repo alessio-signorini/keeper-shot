@@ -1,5 +1,5 @@
 import * as C from '../../config';
-import { compose, IDENTITY, invert, scaleMat } from '../../core/geometry';
+import { IDENTITY, rescaleTransform } from '../../core/geometry';
 import { ransacSimilarity } from '../../core/ransac';
 import type { Box, Mat3, Pt } from '../../types';
 import { loadCV, withMats, type CV } from './opencv';
@@ -23,12 +23,13 @@ function sampleMatches(
   pairs: { a: Pt; b: Pt }[],
   inlier: (i: number) => boolean,
   s: number,
+  sRef: number,
 ): [number, number, number, number][] {
   const idx = pairs.map((_, i) => i).filter(inlier);
   const step = Math.max(1, Math.ceil(idx.length / C.DEBUG_MAX_MATCHES));
   return idx
     .filter((_, k) => k % step === 0)
-    .map((i) => [pairs[i].a[0] / s, pairs[i].a[1] / s, pairs[i].b[0] / s, pairs[i].b[1] / s]);
+    .map((i) => [pairs[i].a[0] / s, pairs[i].a[1] / s, pairs[i].b[0] / sRef, pairs[i].b[1] / sRef]);
 }
 
 export function maskBoxes(boxes: Box[], scale: number): Box[] {
@@ -80,10 +81,13 @@ function orbFeatures(cv: CV, f: AlignFeatures, t: { add: <T extends { delete: ()
 export class BackgroundAligner {
   private cv!: CV;
   private ref!: Feat;
+  /** reference full → align scale; photos in a burst may differ in resolution */
+  private sRef!: number;
 
-  static async create(baseUrl: string, ref: AlignFeatures): Promise<BackgroundAligner> {
+  static async create(baseUrl: string, ref: AlignFeatures, refFullW: number): Promise<BackgroundAligner> {
     const a = new BackgroundAligner();
     a.cv = await loadCV(baseUrl);
+    a.sRef = ref.w / refFullW;
     await withMats((t) => {
       const f = orbFeatures(a.cv, ref, t);
       a.ref = f; // owned beyond the tracker; freed in dispose()
@@ -99,8 +103,7 @@ export class BackgroundAligner {
   async align(frame: AlignFeatures, fullW: number): Promise<AlignResult> {
     const cv = this.cv;
     const s = frame.w / fullW; // full → align scale
-    const S = scaleMat(s);
-    const Sinv = invert(S);
+    const sRef = this.sRef;
     return withMats((t) => {
       const feat = orbFeatures(cv, frame, t);
       t.add(feat.des);
@@ -119,7 +122,7 @@ export class BackgroundAligner {
             pairs.push({ a: feat.kp[m0.queryIdx], b: this.ref.kp[m0.trainIdx] });
         }
       }
-      const full = (H: Mat3) => compose(Sinv, compose(H, S));
+      const full = (H: Mat3) => rescaleTransform(H, s, sRef);
       if (pairs.length >= 4) {
         const src = t.add(
           cv.matFromArray(
@@ -158,7 +161,7 @@ export class BackgroundAligner {
               inliers,
               fallback: false,
               identity: false,
-              matches: sampleMatches(pairs, (i) => !!inl.data[i], s),
+              matches: sampleMatches(pairs, (i) => !!inl.data[i], s, sRef),
             };
         }
         const sim = ransacSimilarity(
@@ -172,11 +175,11 @@ export class BackgroundAligner {
             inliers: sim.inliers,
             fallback: true,
             identity: false,
-            matches: sampleMatches(pairs, (i) => set.has(i), s),
+            matches: sampleMatches(pairs, (i) => set.has(i), s, sRef),
           };
         }
       }
-      return { toRef: [...IDENTITY], inliers: 0, fallback: true, identity: true, matches: [] };
+      return { toRef: full([...IDENTITY]), inliers: 0, fallback: true, identity: true, matches: [] };
     });
   }
 }

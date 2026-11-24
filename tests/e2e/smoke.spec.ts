@@ -62,7 +62,8 @@ for (const dir of bursts) {
     await page.goto('/');
     await page.locator('input[type=file]').setInputFiles(images);
     // let the page finish decoding thumbnails first: overlapping with the worker's decode of 20MP photos exhausts small CI/containers
-    await expect(page.locator('img')).toHaveCount(images.length, { timeout: 60_000 });
+    // photo thumbnails are labelled with their file names (the decorative logo has alt="")
+    await expect(page.locator('img:not([alt=""])')).toHaveCount(images.length, { timeout: 60_000 });
     await page.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible({ timeout: 150_000 });
 

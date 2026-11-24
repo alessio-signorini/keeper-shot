@@ -21,7 +21,7 @@ export async function alignPass(
   const n = frames.length;
   const backgroundAligned = new Map<number, { fallback: boolean }>();
   try {
-    const aligner = await BackgroundAligner.create(baseUrl, alignFeatures[refIndex]);
+    const aligner = await BackgroundAligner.create(baseUrl, alignFeatures[refIndex], frames[refIndex].width);
     try {
       for (let i = 0; i < n; i++) {
         if (i !== refIndex) {

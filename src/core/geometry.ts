@@ -44,6 +44,14 @@ export function scaleMat(sx: number, sy = sx): Mat3 {
   return [sx, 0, 0, 0, sy, 0, 0, 0, 1];
 }
 
+/**
+ * Lift a transform found between two downscaled images back to full resolution. `s` and `sRef` are each image's
+ * full → downscaled factor; they differ when the photos have different resolutions.
+ */
+export function rescaleTransform(m: Mat3, s: number, sRef: number): Mat3 {
+  return compose(invert(scaleMat(sRef)), compose(m, scaleMat(s)));
+}
+
 export function boxOf(pts: Pt[]): Box {
   let x0 = Infinity,
     y0 = Infinity,
